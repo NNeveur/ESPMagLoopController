@@ -112,8 +112,128 @@ uint8_t virt_x, virt_y;   // x and y coordinates for LCD
 //      the transfer (30/step_rate ~ step_rate 10 equals 1ms, step_rate 15 equals 667us)
 //-----------------------------------------------------------------------------------------
 //
+#if defined(PLATFORM_ESP32S3_TOUCH) || defined(ESP32)
+// GT911 Touch Controller Implementation for Waveshare ESP32-S3-TOUCH-LCD-7
+#define GT911_I2C_ADDR1 0x5D
+#define GT911_I2C_ADDR2 0x14
+
+static uint8_t gt911_addr = GT911_I2C_ADDR1;
+
+void gt911_init(void) {
+  Wire1.beginTransmission(GT911_I2C_ADDR1);
+  if (Wire1.endTransmission() != 0) {
+    gt911_addr = GT911_I2C_ADDR2;
+  }
+}
+
+void process_touch(void) {
+  static unsigned long last_touch_ms = 0;
+  static bool was_pressed = false;
+
+  Wire1.beginTransmission(gt911_addr);
+  Wire1.write(0x81);
+  Wire1.write(0x4E);
+  if (Wire1.endTransmission() != 0) return;
+
+  Wire1.requestFrom((uint8_t)gt911_addr, (uint8_t)1);
+  if (!Wire1.available()) return;
+  uint8_t status = Wire1.read();
+
+  uint8_t touch_count = status & 0x0F;
+  if ((status & 0x80) == 0 || touch_count == 0) {
+    Wire1.beginTransmission(gt911_addr);
+    Wire1.write(0x81);
+    Wire1.write(0x4E);
+    Wire1.write(0x00);
+    Wire1.endTransmission();
+    if (was_pressed) {
+      was_pressed = false;
+    }
+    return;
+  }
+
+  // Read first touch point BEFORE clearing buffer flag
+  Wire1.beginTransmission(gt911_addr);
+  Wire1.write(0x81);
+  Wire1.write(0x4F);
+  Wire1.endTransmission();
+
+  Wire1.requestFrom((uint8_t)gt911_addr, (uint8_t)4);
+  if (Wire1.available() < 4) {
+    Wire1.beginTransmission(gt911_addr);
+    Wire1.write(0x81);
+    Wire1.write(0x4E);
+    Wire1.write(0x00);
+    Wire1.endTransmission();
+    return;
+  }
+
+  uint8_t x_lsb = Wire1.read();
+  uint8_t x_msb = Wire1.read();
+  uint8_t y_lsb = Wire1.read();
+  uint8_t y_msb = Wire1.read();
+
+  // Clear touch buffer flag AFTER reading coordinates
+  Wire1.beginTransmission(gt911_addr);
+  Wire1.write(0x81);
+  Wire1.write(0x4E);
+  Wire1.write(0x00);
+  Wire1.endTransmission();
+
+  uint16_t x = x_lsb | (x_msb << 8);
+  uint16_t y = y_lsb | (y_msb << 8);
+
+  // Debounce touches
+  if (millis() - last_touch_ms < 150) return;
+  last_touch_ms = millis();
+  was_pressed = true;
+
+  // Process touch actions based on coordinates on 800x480 screen
+  // Row 1: Virtual Rotary Encoder / Stepping (Y: 230 - 330)
+  if (y >= 230 && y <= 330) {
+    if (x >= 20 && x <= 190) {        // [ << FAST ]
+      Enc.pos -= 16;
+    } else if (x >= 210 && x <= 380) { // [ < STEP ]
+      Enc.pos -= 2;
+    } else if (x >= 420 && x <= 590) { // [ STEP > ]
+      Enc.pos += 2;
+    } else if (x >= 610 && x <= 780) { // [ FAST >> ]
+      Enc.pos += 16;
+    }
+  }
+  // Row 2: Switches & Antenna Selection (Y: 350 - 460)
+  else if (y >= 350 && y <= 460) {
+    if (x >= 20 && x <= 140) {         // [ MENU / ENTER ]
+      flag.short_push = true;
+    } else if (x >= 155 && x <= 250) { // [ UP ]
+      up_toggle = true;
+      up_button = true;
+    } else if (x >= 265 && x <= 360) { // [ DOWN ]
+      dn_toggle = true;
+      dn_button = true;
+    } else if (x >= 375 && x <= 490) { // [ SWR TUNE ]
+      #if PSWR_AUTOTUNE
+      swr.tune_request = true;
+      SWRtune_timer = SWRTUNE_TIMEOUT;
+      #endif
+    } else if (x >= 505 && x <= 630) { // [ RECAL / PROF ]
+      flag.stepper_recalibrate = true;
+    } else if (x >= 645 && x <= 780) { // [ ANT SELECT ]
+      ant = (ant + 1) % 3;
+      antenna_select(running[ant].Frq);
+      #if RS485STEPPER
+      rs485_SelectAntenna(ant);
+      #endif
+    }
+  }
+}
+#endif
+
 void virt_LCD_to_real_LCD(void)
 {
+#if defined(PLATFORM_ESP32S3_TOUCH) || defined(ESP32)
+  process_touch();
+#else
   static char    real_lcd[81];                      // Character array representing what is visible on LCD
   static uint8_t character;                         // Character position on LCD, as 0 - 79
 
@@ -129,6 +249,7 @@ void virt_LCD_to_real_LCD(void)
     character++;                                    // Advance by one character in the 80 char long string
     if (character >= 80) character = 0;
   }
+#endif
 }
 
 //
@@ -303,10 +424,12 @@ const uint8_t LcdCustomChar[7][8] =
 //-----------------------------------------------------------------------------------------
 void lcd_bargraph_Init(void)
 {
+#if !(defined(PLATFORM_ESP32S3_TOUCH) || defined(ESP32))
   for (uint8_t i=0; i<7; i++)
   {
     lcd.createChar(i, (uint8_t*) LcdCustomChar[i]);
   }
+#endif
 }
 
 

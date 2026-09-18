@@ -58,16 +58,68 @@
 // _EEPROMAnything.h
 //
 
+#include "ML.h"
+#include "_EEPROMAnything.h"
+
+#if defined(ESP32) || defined(PLATFORM_ESP32S3_TOUCH)
+#include <Wire.h>
+#include <EEPROM.h>
+
+class Metro {
+public:
+  Metro(unsigned long interval_millis) {
+    this->interval_ms = interval_millis;
+    this->previous = millis();
+  }
+  void interval(unsigned long interval_millis) {
+    this->interval_ms = interval_millis;
+  }
+  bool check() {
+    unsigned long now = millis();
+    if (now - this->previous >= this->interval_ms) {
+      this->previous = now;
+      return true;
+    }
+    return false;
+  }
+  void reset() {
+    this->previous = millis();
+  }
+private:
+  unsigned long previous;
+  unsigned long interval_ms;
+};
+
+class DummyEncoder {
+public:
+  DummyEncoder(int a, int b) : pos(0) {}
+  int32_t read() { return pos; }
+  void write(int32_t p) { pos = p; }
+  int32_t pos;
+};
+
+DummyEncoder Enc(0, 0);
+
+class elapsedMicros {
+public:
+  elapsedMicros() : previous(micros()) {}
+  operator unsigned long() const { return micros() - previous; }
+  elapsedMicros &operator=(unsigned long val) { previous = micros() - val; return *this; }
+  elapsedMicros &operator-=(unsigned long val) { previous += val; return *this; }
+private:
+  unsigned long previous;
+};
+
+#else
 #include <LiquidCrystalFast.h>
 #include <Metro.h>
 #include <EEPROM.h>
 #include <Encoder.h>
-#include <ADC.h>                     // Syncrhonous read of the two builtin ADC
-#include "_EEPROMAnything.h"
-#include "ML.h"
+#include <ADC.h>                     // Synchronous read of the two builtin ADC
 
 #if WIRE_ENABLED
 #include <i2c_t3.h>
+#endif
 #endif
 
 //-----------------------------------------------------------------------------------------
@@ -184,12 +236,12 @@ int32_t   fakepswr_val=1200;         // Used with #define FAKEPSWR - a debug too
                                      // SWR tune without needing to apply RF from a Transceiver
 
 //-----------------------------------------------------------------------------------------
-// Instanciate an ADC Object
+// Instantiate hardware objects for Teensy
+#if !(defined(ESP32) || defined(PLATFORM_ESP32S3_TOUCH))
 ADC *adc = new ADC();
-
-//-----------------------------------------------------------------------------------------
-// Instanciate an Encoder Object
-Encoder   Enc(EncI, EncQ);
+Encoder Enc(EncI, EncQ);
+LiquidCrystalFast lcd(LCD_RS, LCD_RW, LCD_E, LCD_D4, LCD_D5, LCD_D6, LCD_D7);
+#endif
 
 //-----------------------------------------------------------------------------------------
 // Timers for various tasks:
@@ -214,10 +266,6 @@ Metro     trxpollMetro = Metro(1000);// Poll Transceiver for frequency data at a
                                      //  separately per transceiver type, see #defines XXXX_POLL_RATE
                                      //  as defined for each transceiver in ML.h)
                                      // Note: The Auto Modes do not poll.
-
-//-----------------------------------------------------------------------------------------
-// initialize the LCD
-LiquidCrystalFast lcd(LCD_RS, LCD_RW, LCD_E, LCD_D4, LCD_D5, LCD_D6, LCD_D7);
 
 //-----------------------------------------------------------------------------------------
 // Define a "Uart" object to access the serial port
@@ -1089,15 +1137,25 @@ void loop()
 void setup()
 {
   uint8_t coldstart;
-  
+
+#if defined(ESP32) || defined(PLATFORM_ESP32S3_TOUCH)
+  EEPROM.begin(512);
+  Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN, 400000);
+  gt911_init();
+#endif
+
   #if RS485STEPPER
+#if defined(ESP32) || defined(PLATFORM_ESP32S3_TOUCH)
+  Rs485.begin(9600, SERIAL_8N1, Rs485_RXD, Rs485_TXD);
+#else
   Rs485.begin(9600);                                   // initialize USB virtual serial serial port
+#endif
   rs485_Init();                   // Power down the stepper
   #endif
   
-  pinMode(EnactSW, INPUT_PULLUP);          // Initalize Swticthes as input
-  pinMode(UpSW, INPUT_PULLUP);
-  pinMode(DnSW, INPUT_PULLUP);
+  if (EnactSW >= 0) pinMode(EnactSW, INPUT_PULLUP);          // Initialize Switches as input
+  if (UpSW >= 0) pinMode(UpSW, INPUT_PULLUP);
+  if (DnSW >= 0) pinMode(DnSW, INPUT_PULLUP);
 
   #if ENDSTOP_OPT == 2                     // End stop sensors implemented
   pinMode(EndStopUpper, INPUT_PULLUP);
@@ -1265,30 +1323,30 @@ void setup()
   
   #if PSWR_AUTOTUNE
   #if WIRE_ENABLED
+  #if !(defined(ESP32) || defined(PLATFORM_ESP32S3_TOUCH))
   // Start I2C on port SDA1/SCL1 (pins 29/30) - 400 kHz
   Wire1.begin(I2C_MASTER,0x00,I2C_PINS_29_30,I2C_PULLUP_INT,I2C_RATE_400); 
+  #endif
   uint8_t i2c_status = I2C_Init();               // Initialize I2C comms
   #endif
   
-  // Defining the ADC pins as inputs will cause a hysteresis error around 3.3V/2.
-  // In any case, it is not necessary to define them, as the ADC function does it.
-  //pinMode(EnactSW, INPUT);                       // AD input for Menu/Enact Switch
-  //pinMode(Pfwd, INPUT);                          // AD input for Forward Power measurement
-  //pinMode(Pref, INPUT);                          // AD input for Reverse Power measurement
+  #if !(defined(ESP32) || defined(PLATFORM_ESP32S3_TOUCH))
   // Set up the two separate ADCs for synchronous read at 12 bit resolution and lowest possible measurement speed (minimal noise)
-  adc->adc0->setSamplingSpeed(ADC_SAMPLING_SPEED::LOW_SPEED);       // Sampling speed, ADC_VERY_LOW_SPEED, ADC_LOW_SPEED, ADC_MED_SPEED, ADC_HIGH_SPEED or ADC_VERY_HIGH_SPEED
+  adc->adc0->setSamplingSpeed(ADC_SAMPLING_SPEED::LOW_SPEED);       // Sampling speed
   adc->adc1->setSamplingSpeed(ADC_SAMPLING_SPEED::LOW_SPEED);
   adc->adc0->setConversionSpeed(ADC_CONVERSION_SPEED::LOW_SPEED);   // Conversion speed
   adc->adc1->setConversionSpeed(ADC_CONVERSION_SPEED::LOW_SPEED);
   adc->adc0->setResolution(12);                        // AD resolution, 12 bits
   adc->adc1->setResolution(12);
   adc->adc0->setAveraging(16);                         // Averaging by taking multiple samples.
-  adc->adc1->setAveraging(16);                         // 16 samples takes approx 80us per measurement and is just about
-  #endif                                               // good enough for 12 bit resolution w/o too much noise on LSB
+  adc->adc1->setAveraging(16);                         // 16 samples takes approx 80us per measurement
+  #endif
+  #endif
   
   //------------------------------------------
-  // Initialize LCD and Print Version information (5 seconds)
+  // Initialize LCD and Print Version information
   //------------------------------------------          
+#if !(defined(ESP32) || defined(PLATFORM_ESP32S3_TOUCH))
   lcd.begin(20, 4);                              // Initialize a 20x4 LCD  
   lcd.noDisplay();                               // The excessive initialize sequence below helps some OLED LCDs
   lcd.clear();
@@ -1345,6 +1403,19 @@ void setup()
   }
   delay(500);
   #endif
+#else
+  // For ESP32-S3 Touch LCD, virtual LCD layer handles the startup rendering
+  virt_lcd_clear();
+  virt_lcd_setCursor(0,0);
+  virt_lcd_print(STARTUPDISPLAY1);
+  virt_lcd_setCursor(0,1);
+  virt_lcd_print(STARTUPDISPLAY2);
+  virt_lcd_setCursor(0,2);
+  virt_lcd_print(radiotext[controller_settings.trx[controller_settings.radioprofile].radio]);
+  virt_lcd_setCursor(0,3);
+  sprintf(print_buf,"Version: %s", VERSION);
+  virt_lcd_print(print_buf);
+#endif
 
   //------------------------------------------
   // In case of DRV8825, A4988 the previous microstepping to either side 
