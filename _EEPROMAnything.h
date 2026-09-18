@@ -20,6 +20,9 @@ template <class T> int EEPROM_writeAnything(int ee, const T& value)
     unsigned int i;
     for (i = 0; i < sizeof(value); i++)
           EEPROM.write(ee++, *p++);
+#if defined(ESP32) || defined(PLATFORM_ESP32S3_TOUCH)
+    EEPROM.commit();
+#endif
     return i;
 }
 

@@ -90,48 +90,44 @@ int8_t I2C_Init(void)
 // This function reads the A/D inputs
 void adc_poll(void)
 {
-  ADC::Sync_result result;
-
   #if WIRE_ENABLED  
-  uint16_t adc_in[4];
-  uint8_t  read_B[4];
+  uint16_t adc_in[4] = {0, 0, 0, 0};
+  uint8_t  read_B[4] = {0, 0, 0, 0};
   uint8_t  i=0;
   
   //-----------------------------------------------------------------------------
-  // use I2C connected AD7991 12-bit AD converter, if it was detected during init
+  // use I2C connected AD7991 12-bit AD converter
   if (ad7991_addr)
   {  
-    Wire1.requestFrom(ad7991_addr, 4);
-    // Wire1.read() is compatible with both standard Wire.h (Teensy 4.1) and i2c_t3.h (Teensy 3.1/3.2)
-    while (Wire1.available()) read_B[i++] = Wire1.read();
+    Wire1.requestFrom((uint8_t)ad7991_addr, (uint8_t)4);
+    while (Wire1.available() && i < 4) read_B[i++] = Wire1.read();
 
-    // The output of the 12bit ADCs is contained in two consecutive byte pairs
-    // read from the AD7991.  In theory, the second could be read before the first.
-    // Each of the AD7991 four builtin ADCs has an address identifier (0 to 3)
-    // in the uppermost 4 bits of the first byte.  The lowermost 4 bits of the first
-    // byte are bits 8-12 of the A/D output.
-    // In this routine we only read the two first ADCs, as set up in the I2C_Init()
     adc_in[(read_B[0] >> 4) & 0x03] = (read_B[0] & 0x0f) * 0x100 + read_B[1];
     adc_in[(read_B[2] >> 4) & 0x03] = (read_B[2] & 0x0f) * 0x100 + read_B[3];
-    fwd = adc_in[0] * 2.6/3.25;  // My AD7991 implementation uses 2.6V reference
-    ref = adc_in[1] * 2.6/3.25;  // This is a bit crude, loses some precision
+    fwd = adc_in[0] * 2.6/3.25;  // AD7991 channel 0: Forward Power
+    ref = adc_in[1] * 2.6/3.25;  // AD7991 channel 1: Reflected Power
   }
   else
   #endif
   //----------------------------------------------------------------------------
-  // If no I2C, then use builtin A/D converters and convert to 12 bit resolution
+  // If no I2C, use builtin A/D converters (Teensy)
   {
-    result = adc->analogSynchronizedRead(Pref, Pfwd);  // ref=ADC0, fwd=ADC1
+#if !(defined(ESP32) || defined(PLATFORM_ESP32S3_TOUCH))
+    ADC::Sync_result result = adc->analogSynchronizedRead(Pref, Pfwd);
     if( (result.result_adc0 !=ADC_ERROR_VALUE) && (result.result_adc1 !=ADC_ERROR_VALUE) )
     {
-      fwd = result.result_adc1;                   // We have good data from the ADs
+      fwd = result.result_adc1;
       ref = result.result_adc0;
     }
-    else  // error
+    else
     {
-      fwd = -1;                                   // Should never happen
-      ref = -1;
+      fwd = 0;
+      ref = 0;
     }	
+#else
+    fwd = 0;
+    ref = 0;
+#endif
   }
 }
 

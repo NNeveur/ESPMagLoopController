@@ -67,33 +67,33 @@ const int drv8825_enable= 18;     // Enable pin
 //
 uint8_t multipurpose_pushbutton(void)
 {
+#if defined(PLATFORM_ESP32S3_TOUCH) || defined(ESP32)
+  return 0; // Touchscreen handles UI actions directly
+#else
   static uint16_t pushcount;       // Measure push button time (max 65s)
   uint8_t         state;           // 1, 4, 5 or 6 - or 0 for no-push
   static uint8_t  prevstate;       // Used for clumsy debounce
   uint8_t         retstate = 0;    // 1 for short push, 2 for long push
-                                   // 4, 5 or 6 for SW4, 5 or 6 push
 
   #if PSWR_AUTOTUNE
   uint16_t        push_adval;      // Returned AD value of push button
   #define NOTPUSHED  3800          // AD buttons not pushed if EnactSW AD above this value
   #define SW1         512          // SW1 (EnactSW) Pushed if EnactSW AD below this value
-                                   // Inbetween values for SW5 (Autotune Request) pushed
   #define SW4        1816          // SW4: 4096*2k2/(2k2+4k7) = 1304
   #define SW5        2417          // SW5: 4096*4k7/4k7 = 2048
-                                   // SW6: 4096*10k/(10k+4k7) = 2786,
-                                   // is between SW5 and NOTPUSHED
 
-  push_adval = adc->analogRead(EnactSW);
-
-  // Determine state of pushbutton
-  if      ((push_adval < NOTPUSHED) && (push_adval > SW5)) state = 6;
-  else if ((push_adval < SW5)       && (push_adval > SW4)) state = 5;
-  else if ((push_adval < SW4)       && (push_adval > SW1)) state = 4;
-  else if  (push_adval < SW1)                              state = 1;
+  if (EnactSW >= 0) {
+    push_adval = adc->analogRead(EnactSW);
+    if      ((push_adval < NOTPUSHED) && (push_adval > SW5)) state = 6;
+    else if ((push_adval < SW5)       && (push_adval > SW4)) state = 5;
+    else if ((push_adval < SW4)       && (push_adval > SW1)) state = 4;
+    else if  (push_adval < SW1)                              state = 1;
+    else state = 0;
+  } else state = 0;
   #else
-  if (digitalRead(EnactSW) == LOW) state = 1;    // Pin low = pushed
-  #endif    
+  if (EnactSW >= 0 && digitalRead(EnactSW) == LOW) state = 1;
   else state = 0;
+  #endif
 
   //-------------------------------------------------------------------    
   // Is this the end of a successful push?
@@ -154,6 +154,7 @@ int8_t   up_toggle;               // Set once during a push, reset if status pol
 
 void poll_up_pushbutton(void)
 {
+  if (UpSW < 0) return;
   static uint8_t up_count = 0;
   if (digitalRead(UpSW) == LOW)               // Physical Switch is being pushed
   {
@@ -200,6 +201,7 @@ int8_t   dn_toggle;               // Set once during a push, reset if status pol
 
 void poll_dn_pushbutton(void)
 {
+  if (DnSW < 0) return;
   static uint8_t dn_count = 0;
   if (digitalRead(DnSW) == LOW)               // Physical Switch is being pushed
   {
@@ -238,82 +240,93 @@ int8_t dn_button_toggle(void)
 
 #if RS485STEPPER    // RS485 Stepper control
 //---------------------------------------------------------------------------------
-//		RS485 Stepper control
+//		RS485 Stepper control (Multi-Antenna Capable)
 //---------------------------------------------------------------------------------
 //
    
 //
 // Increment Stepper
 //
-void rs485_Incr(uint8_t res)
+void rs485_Incr(uint8_t res, int8_t antenna_id)
 {
+  uint8_t a = (antenna_id >= 0) ? (uint8_t)antenna_id : ant;
   res = 3 - res;                       // Reversed: 0 for no microsteps
                                        // 1 for half step (2 microsteps)
                                        // 2 for quarter step (4 microsteps)
                                        // 3 for eighth step (8 microsteps)
 
-  rs485_PwrOn();                     // Ensure Power On state
+  rs485_PwrOn(a);                     // Ensure Power On state
   Rs485.print("$SINC ");
+  Rs485.print(a);
+  Rs485.print(" ");
   Rs485.println(res);
 }
+
 //
 // Decrement Stepper
 //
-void rs485_Decr(uint8_t res)
+void rs485_Decr(uint8_t res, int8_t antenna_id)
 {
+  uint8_t a = (antenna_id >= 0) ? (uint8_t)antenna_id : ant;
   res = 3 - res;                       // Reversed: 0 for no microsteps
                                        // 1 for half step (2 microsteps)
                                        // 2 for quarter step (4 microsteps)
                                        // 3 for eighth step (8 microsteps)
 
-  rs485_PwrOn();                     // Ensure Power On state
+  rs485_PwrOn(a);                     // Ensure Power On state
   Rs485.print("$SDEC ");
+  Rs485.print(a);
+  Rs485.print(" ");
   Rs485.println(res);
 }
 
 //
-// Move Stepper (neends >1+ microsecond delay from positive edge)
+// Move Stepper
 //
-void rs485_Move(void)
+void rs485_Move(int8_t antenna_id)
 {
-	  Rs485.println("$SMOV");
-
-//  digitalWrite(drv8825_step, LOW);     // Move, turn Step pulse off  
+  uint8_t a = (antenna_id >= 0) ? (uint8_t)antenna_id : ant;
+  Rs485.print("$SMOV ");
+  Rs485.println(a);
 }
 
 //
 // Turn the Stepper On
 //
-void rs485_PwrOn(void)
+void rs485_PwrOn(int8_t antenna_id)
 {
-  //digitalWrite(drv8825_reset, HIGH); // Release Reset, turn Stepper Motor On
-  Rs485.println("$SON");
-
-//  digitalWrite(drv8825_enable, LOW);   // Enable Stepper
+  uint8_t a = (antenna_id >= 0) ? (uint8_t)antenna_id : ant;
+  Rs485.print("$SON ");
+  Rs485.println(a);
 }
 
 //
 // Turn the Stepper Off
 //
-void rs485_PwrOff(void)
+void rs485_PwrOff(int8_t antenna_id)
 {
-  //digitalWrite(drv8825_reset, LOW);  // Reset and turn Stepper Motor Off
-  Rs485.println("$SOF");
+  uint8_t a = (antenna_id >= 0) ? (uint8_t)antenna_id : ant;
+  Rs485.print("$SOF ");
+  Rs485.println(a);
+}
 
-//  digitalWrite(drv8825_enable, HIGH);  // Disable Stepper, retain last state
+//
+// Select Antenna on RS485 bus
+//
+void rs485_SelectAntenna(uint8_t antenna_id)
+{
+  Rs485.print("$SANT ");
+  Rs485.println(antenna_id);
 }
 
 //
 // Init Stepper Outputs
 //
-void rs485_Init(void)
+void rs485_Init(int8_t antenna_id)
 {
-//  pinMode(drv8825_dir, OUTPUT);        // Direction Pin    
-//  pinMode(drv8825_step, OUTPUT);       // Step Pin
-//  pinMode(drv8825_ms2, OUTPUT);        // MS2 pin
-//  pinMode(drv8825_ms1, OUTPUT);        // MS1 pin
-//  pinMode(drv8825_enable, OUTPUT);     // Enable Pin    
-  Rs485.println("$SINIT");
-  rs485_PwrOff();                    // Ensure Power Off state
+  uint8_t a = (antenna_id >= 0) ? (uint8_t)antenna_id : ant;
+  Rs485.print("$SINIT ");
+  Rs485.println(a);
+  rs485_PwrOff(a);                    // Ensure Power Off state
 }
 #endif

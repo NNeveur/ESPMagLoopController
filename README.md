@@ -3,8 +3,8 @@
 **Contrôleur d'Antenne Boucle Magnétique d'Émission**
 
 * **Auteur :** Loftur E. Jonasson (TF3LJ / VE2AO / VE2LJX)
-* **Version du firmware :** 4.10 (21 Juin 2020)
-* **Plateformes supportées :** Teensy 3.1 / 3.2 (ARM Cortex-M4) & **Teensy 4.1** (ARM Cortex-M7 à 600 MHz)
+* **Version du firmware :** 5.00-ESP32S3
+* **Plateformes supportées :** **Waveshare ESP32-S3-TOUCH-LCD-7** (ESP32-S3 Dual-Core LX7), Teensy 4.1 & Teensy 3.1 / 3.2
 * **Licence :** GNU General Public License v3.0 (GPLv3)
 
 ---
@@ -59,23 +59,20 @@ Une antenne boucle magnétique possédant une bande passante très étroite, cha
 
 ---
 
-## 🛠️ Architecture Matérielle (Hardware)
+## 🛠️ Architecture Matérielle (Hardware) & Pinout ESP32-S3
 
-* **Microcontrôleur :** PJRC Teensy 3.1 / 3.2 (32-bit ARM Cortex-M4 à 72 MHz) ou **Teensy 4.1** (32-bit ARM Cortex-M7 à 600 MHz).
-* **Pilote de Moteur Pas-à-Pas :**
-  - Soit 2x Allegro A4975 (`#define A4975STEPPER 1`).
-  - Soit 1x Pololu DRV8825 / A4988 (`#define DRV8825STEPPER 1`).
-  - Soit contrôle à distance via liaison **RS485** (`#define RS485STEPPER 1`) sur le port série `Serial2` à 9600 bps.
-* **Affichage :** Écran LCD 20x4 caractères (4 bits de données + RS, RW, E).
-* **Interface Radio :** Port UART (Pins 0/RX1 et 1/TX1) avec inverseur RS232 / TTL optionnel.
-* **Mesure RF :**
-  - Entrées analogiques A10 (Pfwd) et A11 (Pref) pour la mesure de puissance directe et réfléchie.
-  - Option I2C (AD7991) sur les broches 29/30.
-* **Commandes Utilisateur :**
-  - Encodeur rotatif quadrature (Pins 9/10).
-  - Bouton menu / validation (EnactSW, Pin 23 / A9).
-  - Boutons Up / Down (Pins 11 et 12).
-  - Capteurs de fin de course (Pins 21 et 22, si activés).
+* **Microcontrôleur :** ESP32-S3 (Dual-Core Xtensa LX7 à 240 MHz, Flash 8MB, PSRAM 8MB) sur carte **Waveshare ESP32-S3-TOUCH-LCD-7**.
+* **Affichage & Tactile :** Écran TFT 7 pouces (résolution **800x480**) avec dalle tactile capacitive controller **GT911** sur bus I2C.
+* **Mesure RF (Puissance et SWR) :** Convertisseur ADC 12 bits **AD7991** sur le bus I2C (`I2C_SDA_PIN = GPIO8`, `I2C_SCL_PIN = GPIO9`).
+* **Interface RS485 Multi-Antennes :** Port UART Hardware `Serial2` (`TX = GPIO15`, `RX = GPIO16`) à 9600 bps pour le contrôle du moteur pas-à-pas distant et la sélection d'antenne.
+* **Interface Radio CAT :** Port UART Hardware `Serial1` (`TX = GPIO43`, `RX = GPIO44`).
+* **Sorties Numériques / Relais :**
+  - PTT matériel : `GPIO10`
+  - Sélecteurs d'antenne : `ant1_select = GPIO11`, `ant2_select = GPIO12`
+  - Bits de commutation de bande : `bnd_bit1 = GPIO13`, `bnd_bit2 = GPIO14`
+  - Indicateurs de profil radio : `profile_bit1 = GPIO21`, `profile_bit2 = GPIO47`
+  - Alarme ROS (SWR Alarm) : `swralarm_bit = GPIO48`
+* **Commandes Utilisateur Tactiles :** Boutons et molette virtuels sur l'écran tactile (remplaçant l'encodeur rotatif et les boutons poussoirs).
 
 ---
 
@@ -146,18 +143,19 @@ Toutes les options matérielles et logicielles sont configurables dans le fichie
 
 ---
 
-## 📡 Protocole de Commande Moteur RS485
+## 📡 Protocole de Commande RS485 Multi-Antennes
 
-Lorsque l'option `#define RS485STEPPER 1` est activée dans `ML.h`, le contrôleur envoie des commandes ASCII via le port série `Serial2` (initialisé à 9600 bauds) pour piloter un driver moteur pas-à-pas distant :
+Lorsque l'option `#define RS485STEPPER 1` est activée dans `ML.h`, le contrôleur communique via le bus série RS485 (`Serial2` à 9600 bps) avec adressage de l'antenne active `<ant>` (0, 1 ou 2) :
 
-| Commande | Paramètre | Description |
+| Commande | Paramètres | Description |
 | :--- | :--- | :--- |
-| `$SINIT` | Aucun | Initialisation du contrôleur moteur pas-à-pas RS485. |
-| `$SON` | Aucun | Activation de l'alimentation des enroulements du moteur (*Power On*). |
-| `$SOF` | Aucun | Coupure de l'alimentation du moteur pas-à-pas (*Power Off* / économie de courant). |
-| `$SINC <res>` | `<res>` (0-3) | Préparation du déplacement dans le sens horaire (*Increment*) avec niveau de microstepping `res` (3 = pas entier, 2 = 1/2 pas, 1 = 1/4 de pas, 0 = 1/8 de pas). |
-| `$SDEC <res>` | `<res>` (0-3) | Préparation du déplacement dans le sens anti-horaire (*Decrement*) avec niveau de microstepping `res`. |
-| `$SMOV` | Aucun | Exécution du déplacement d'un pas (*Pulse Step*). |
+| `$SINIT <ant>` | `<ant>` (0-2) | Initialisation du contrôleur d'antenne RS485 pour l'antenne cible. |
+| `$SON <ant>` | `<ant>` (0-2) | Activation de l'alimentation moteur de l'antenne spécifiée. |
+| `$SOF <ant>` | `<ant>` (0-2) | Coupure d'alimentation moteur pour économie d'énergie. |
+| `$SINC <ant> <res>` | `<ant> <res>` | Déplacement sens horaire pour l'antenne cible avec résolution `res` (0 = 1/8 micropas, 3 = pas entier). |
+| `$SDEC <ant> <res>` | `<ant> <res>` | Déplacement sens anti-horaire pour l'antenne cible avec résolution `res`. |
+| `$SMOV <ant>` | `<ant>` (0-2) | Exécution du déplacement d'un pas sur l'antenne spécifiée. |
+| `$SANT <ant>` | `<ant>` (0-2) | Sélection / Commutation de l'antenne active sur le bus RS485. |
 
 ---
 

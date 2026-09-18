@@ -32,7 +32,7 @@
 
 #include <Arduino.h>
 
-#define  VERSION "5.00"
+#define  VERSION "5.00-ESP32S3"
 #define  DATE    "2026-09-18"
 
 //
@@ -40,6 +40,12 @@
 // Features Selection
 //-----------------------------------------------------------------------------  
 //
+
+// Enable ESP32-S3 Waveshare LCD Touch platform
+#if defined(ESP32) || defined(ARDUINO_ARCH_ESP32)
+#define PLATFORM_ESP32S3_TOUCH 1
+#define Wire1 Wire
+#endif
 
 //-----------------------------------------------------------------------------
 // Definitions for Hardware implementation
@@ -52,8 +58,8 @@
 // Enable AD8307 option for Power/SWR meter if using 2x AD8307 log amp detector
 #define AD8307_INSTALLED   0    // 0 or 1
 //-----------------------------------------------------------------------------
-// Experimental - Enable I2C for External AD7991 A/D bridge for Power/SWR meter 
-#define WIRE_ENABLED       0    // 0 or 1 (I2C bus is on pins 29 and 30)                          
+// Enable I2C for External AD7991 A/D bridge for Power/SWR meter
+#define WIRE_ENABLED       1    // 1 for ESP32-S3 with AD7991 on I2C bus
 
 //-----------------------------------------------------------------------------
 // Definitions for End Stop sensing
@@ -78,7 +84,7 @@
 //  to enable additional pushbuttons 4, 5 and 6.  It will also enable the
 //  Power and SWR meter code, including AD-read of Forward and Reverse voltage
 //  inputs.  It also enables the SWR Tune and SWR-Autotune functions)
-#define PSWR_AUTOTUNE      0    // 0 or 1
+#define PSWR_AUTOTUNE      1    // 1 for SWR measurement & autotune via AD7991
 
 //-----------------------------------------------------------------------------
 // Stepper Motor Recalibrate
@@ -587,6 +593,42 @@ const char *radiotext[] = { "ICOM generic CI-V",
 // Assign pins to inputs and outputs (Arduino style)
 //-----------------------------------------------------------------------------  
 //
+#if defined(PLATFORM_ESP32S3_TOUCH) || defined(ESP32)
+
+// ESP32-S3 Pin Mapping for Waveshare ESP32-S3-TOUCH-LCD-7
+// I2C Bus Pins (AD7991 & Touch)
+const int8_t I2C_SDA_PIN    = 8;
+const int8_t I2C_SCL_PIN    = 9;
+
+// UART Serial CAT (Radio)
+const int8_t Uart_RXD       = 44;
+const int8_t Uart_TXD       = 43;
+
+// RS485 Serial (Motor / Multi-antenna control)
+const int8_t Rs485_RXD      = 16;
+const int8_t Rs485_TXD      = 15;
+
+// Digital Outputs (Relays / Band / PTT / Alarm)
+const int hardware_ptt      = 10;
+const int ant1_select       = 11;
+const int ant2_select       = 12;
+const int bnd_bit1          = 13;
+const int bnd_bit2          = 14;
+const int profile_bit1      = 21;
+const int profile_bit2      = 47;
+const int swralarm_bit      = 48;
+
+// Dummy values for virtual/legacy inputs (replaced by touchscreen)
+const int EnactSW           = -1;
+const int UpSW              = -1;
+const int DnSW              = -1;
+const int EncI              = -1;
+const int EncQ              = -1;
+const int Pfwd              = -1;
+const int Pref              = -1;
+
+#else
+
 // Switch input pins
 // UART (serial port) uses Pins 0 and 1
 const int8_t Uart_RXD      = 44;
@@ -621,7 +663,6 @@ const int LCD_E            =  4;
 const int Pfwd             = A10;
 const int Pref             = A11;
 
-
 //-----------------------------------------------------------------------------
 // TXD output, if anyone needs it.  Useful with some older ICOM Radios
 // which do not implement PTT control over CI-V
@@ -648,6 +689,8 @@ const int bnd_bit2    =  25;  // two binary signal pins for four bands.
 const int profile_bit1=  31;  // Radio Profile switching  signals, pads underneath the Teensy 3.1/3.2,
 const int profile_bit2=  32;  // two binary signal pins for four profiles.
 const int swralarm_bit=  33;  // SWR alarm output whenever SWR is higher than Menu Preset
+
+#endif
 
 //
 //-----------------------------------------------------------------------------
@@ -791,10 +834,14 @@ typedef struct  {
 #define NOPWR      3
 
 //-----------------------------------------------------------------------------
-// Soft Reset Teensy 3 style
+// Soft Reset
+#if defined(ESP32) || defined(PLATFORM_ESP32S3_TOUCH)
+#define SOFT_RESET()       ESP.restart()
+#else
 #define RESTART_ADDR       0xE000ED0C
 #define RESTART_VAL        0x5FA0004
 #define SOFT_RESET()       ((*(volatile uint32_t *)RESTART_ADDR) = (RESTART_VAL))
+#endif
 
 //-----------------------------------------------------------------------------
 // Macros
