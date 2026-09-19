@@ -65,11 +65,9 @@ const int drv8825_enable= 18;     // Enable pin
 // (routine should be called once every 1 ms)
 //--------------------------------------------------------------------
 //
+#if !ESP32
 uint8_t multipurpose_pushbutton(void)
 {
-#if defined(PLATFORM_ESP32S3_TOUCH) || defined(ESP32)
-  return 0; // Touchscreen handles UI actions directly
-#else
   static uint16_t pushcount;       // Measure push button time (max 65s)
   uint8_t         state;           // 1, 4, 5 or 6 - or 0 for no-push
   static uint8_t  prevstate;       // Used for clumsy debounce
@@ -137,6 +135,7 @@ uint8_t multipurpose_pushbutton(void)
 
   return retstate;
 }
+#endif  // !ESP32 (multipurpose_pushbutton is Teensy-only)
 
 
 //-------------------------------------------------------------------
@@ -144,7 +143,6 @@ uint8_t multipurpose_pushbutton(void)
 // is a change from the last state
 // The poll routines should be called once every one to 5 milliseconds
 //-------------------------------------------------------------------
-
 //-------------------------------------------------------------------
 // Poll the UP Button, including debounce
 // Gather both momentary status and toggle status
@@ -154,6 +152,7 @@ int8_t   up_toggle;               // Set once during a push, reset if status pol
 
 void poll_up_pushbutton(void)
 {
+  #if !ESP32
   if (UpSW < 0) return;
   static uint8_t up_count = 0;
   if (digitalRead(UpSW) == LOW)               // Physical Switch is being pushed
@@ -176,6 +175,7 @@ void poll_up_pushbutton(void)
     up_button = false;
     up_count = 0;
   }
+  #endif
 }
 //-------------------------------------------------------------------
 // Return Momentary Status
@@ -201,6 +201,7 @@ int8_t   dn_toggle;               // Set once during a push, reset if status pol
 
 void poll_dn_pushbutton(void)
 {
+  #if !ESP32
   if (DnSW < 0) return;
   static uint8_t dn_count = 0;
   if (digitalRead(DnSW) == LOW)               // Physical Switch is being pushed
@@ -211,6 +212,7 @@ void poll_dn_pushbutton(void)
                                               // consecutive readings before enacting.
                                               // LOOP_RATE is typically
                                               // set between 1 and 5 milliseconds
+      else                                    // YES, switch is being pushed
       {
         dn_button = true;                     // Mark Switch as pushed (debounce done)
         dn_toggle = true;                     // This is a new state
@@ -222,6 +224,7 @@ void poll_dn_pushbutton(void)
     dn_button = false;
     dn_count = 0;
   }
+  #endif
 }
 //-------------------------------------------------------------------
 // Return Momentary Status

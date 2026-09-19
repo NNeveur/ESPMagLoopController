@@ -66,12 +66,7 @@ Une antenne boucle magnétique possédant une bande passante très étroite, cha
 * **Mesure RF (Puissance et SWR) :** Convertisseur ADC 12 bits **AD7991** sur le bus I2C (`I2C_SDA_PIN = GPIO8`, `I2C_SCL_PIN = GPIO9`).
 * **Interface RS485 Multi-Antennes :** Port UART Hardware `Serial2` (`TX = GPIO15`, `RX = GPIO16`) à 9600 bps pour le contrôle du moteur pas-à-pas distant et la sélection d'antenne.
 * **Interface Radio CAT :** Port UART Hardware `Serial1` (`TX = GPIO43`, `RX = GPIO44`).
-* **Sorties Numériques / Relais :**
-  - PTT matériel : `GPIO10`
-  - Sélecteurs d'antenne : `ant1_select = GPIO11`, `ant2_select = GPIO12`
-  - Bits de commutation de bande : `bnd_bit1 = GPIO13`, `bnd_bit2 = GPIO14`
-  - Indicateurs de profil radio : `profile_bit1 = GPIO21`, `profile_bit2 = GPIO47`
-  - Alarme ROS (SWR Alarm) : `swralarm_bit = GPIO48`
+* **Sorties numériques Teensy (PTT, sélecteurs d'antenne, bits de bande/profil, alarme ROS) :** non disponibles sur cette carte. Le tableau de broches des versions précédentes de ce document était erroné : `GPIO10`, `14`, `21`, `47`, `48` sont utilisées par le bus RGB de l'écran et `GPIO11`, `12`, `13` par la carte SD. Ces sorties sont exclues du code ESP32 (`#if !ESP32`). Pour un PTT ou des relais, utiliser le bus RS485 ou un module d'extension sur des broches libres (`GPIO6` ne figure dans aucun tableau d'interface de la carte, à vérifier sur le schéma ; `GPIO15/16` sont déjà prises par RS485).
 * **Commandes Utilisateur Tactiles :** Boutons et molette virtuels sur l'écran tactile (remplaçant l'encodeur rotatif et les boutons poussoirs).
 
 ---
@@ -105,6 +100,9 @@ Pour assurer une compatibilité complète avec la carte **Teensy 4.1** sans cass
 | :--- | :--- |
 | `ML.h` | Fichier d'en-tête principal : définitions matérielles, options de compilation (`#define`), structures de données, `SOFT_RESET()` et constantes. |
 | `ML_v410.ino` | Fichier principal : initialisation (`setup()`), boucle principale (`loop()`), tâches périodiques et suivi de fréquence. |
+| `ML_GFX.ino` | **ESP32-S3 :** pilote CH422G, panneau RGB, imitation du LCD 20x4, boutons tactiles GT911 et fenêtre SD. |
+| `ML_SD.ino` | **ESP32-S3 :** sauvegarde / restauration sur carte SD (tâche d'arrière-plan, autosave, restauration au démarrage). |
+| `ML_Font5x7.h` | Police 5x7 utilisée pour le rendu du LCD (Adafruit GFX, licence BSD). |
 | `ML_Display.ino` | Gestion de l'écran LCD 20x4, du buffer virtuel, de l'économiseur d'écran et des bargraphes de puissance/ROS. |
 | `ML_Menu.ino` | Arborescence et gestion du menu de configuration utilisateur (réglages moteur, radios, calibration, mémoires). |
 | `ML_PSWR.ino` | Échantillonnage ADC, calculs de la puissance directe/réfléchie (mW, W), du PEP, du ROS et étalonnage (AD8307 / diodes). |
@@ -159,7 +157,49 @@ Lorsque l'option `#define RS485STEPPER 1` est activée dans `ML.h`, le contrôle
 
 ---
 
+## 🖥️ Écran tactile 800x480
+
+L'écran LCD 20x4 à cristaux liquides du montage d'origine est imité (matrice de points HD44780, caractères 5x8, bargraphes de puissance/ROS compris) dans la partie haute de l'écran. Il affiche exactement le contenu du tampon `virt_lcd[]`, donc tous les menus et affichages existants apparaissent tels quels. Thème `LCD_THEME` : `0` = blanc sur bleu, `1` = noir sur vert-jaune.
+
+Sous l'afficheur, deux rangées de boutons tactiles :
+
+| Bouton | Action |
+| :--- | :--- |
+| `<<` `<` `>` `>>` | Molette : un pas (`<` `>`) ou 8 pas (`<<` `>>`), répétition en maintenant. Dans le menu : élément précédent / suivant. |
+| `MENU` | Appui court = *Enter* dans le menu. **Appui long (1 s) = ouvre le menu de configuration.** Hors menu, l'appui court ne fait rien au moteur (plus de recalibrage accidentel). |
+| `UP` / `DOWN` | Comme les boutons d'origine : réglage manuel, présélection suivante/précédente si la radio est hors ligne, sens de recherche pendant le *SWR Autotune*, défilement du menu. |
+| `TUNE` | Lance le SWR Autotune (grisé si `PSWR_AUTOTUNE = 0`). |
+| `RECAL` | Recalibrage de la position du moteur (grisé si `RECALIBRATE = 0`). |
+| `ANT n` | Bascule d'antenne en mode manuel à deux banques (grisé si le changement est automatique par fréquence). |
+| `SD` | Ouvre la fenêtre de la carte SD (voir ci-dessous). Le voyant est vert (prête), orange (occupée) ou rouge (absente / erreur). |
+
+Le tactile GT911 est lu une fois toutes les 20 ms. Si le contrôleur cesse de répondre pendant qu'un bouton est enfoncé, le bouton est relâché au bout de 200 ms (le moteur ne peut pas rester bloqué en marche).
+
+---
+
+## 💾 Sauvegarde sur carte SD
+
+Le fichier `/ML_v500/backup.txt` (texte lisible, avec somme de contrôle) contient les réglages du contrôleur, toutes les présélections fréquence/position et l'état courant. L'ancienne version est conservée en `backup.bak`. L'écriture se fait dans une tâche séparée : le pas-à-pas n'est pas perturbé par la lenteur de la carte.
+
+* **Manuel :** bouton `SD` > `SAUVEGARDER` ou `RESTAURER` (avec confirmation, puis redémarrage). La restauration reprend les réglages et les présélections ; la position courante du moteur est conservée.
+* **Automatique (`SD_AUTOSAVE`) :** sauvegarde 10 s après le dernier changement des présélections ou réglages, et seulement si le moteur est à l'arrêt. Une première sauvegarde est créée si la carte n'en contient pas. Après un échec, nouvel essai au bout de 30 s.
+* **Au démarrage (`SD_AUTORESTORE_BLANK`) :** si l'EEPROM est entièrement vierge (carte neuve, flash effacée) et qu'une sauvegarde valide existe, elle est restaurée, position moteur comprise. Un `$memorywipe` volontaire n'est pas annulé, car il ne vide pas l'EEPROM.
+* **USB :** `$sdsave`, `$sdload`, `$sdstatus`.
+
+Détails matériels : le chip select de la carte est la sortie EXIO4 du CH422G (pas une broche GPIO). `GPIO6` sert de CS factice à la bibliothèque SD (modifiable par `SD_DUMMY_CS_PIN` dans `ML.h`). Formater la carte en FAT32.
+
+---
+
 ## 🔨 Compilation et Installation
+
+### Waveshare ESP32-S3-Touch-LCD-7
+
+* Bibliothèque à installer : **GFX Library for Arduino** (moononournation), version **1.6.x**. `SD`, `SPI`, `Wire`, `EEPROM` viennent avec le noyau ESP32.
+* Réglages de l'IDE : carte *ESP32S3 Dev Module*, **PSRAM : OPI PSRAM** (obligatoire, le tampon d'image de 768 Ko y réside), **USB CDC On Boot : Enabled** (sinon `Serial` partage `GPIO43/44` avec le CAT de `Serial1`), taille de flash et schéma de partitions conformes à votre carte (schéma par défaut avec partition `eeprom`).
+* Le bus RGB est réglé sur les valeurs officielles Waveshare (16 MHz, marges 4/8/8). Si l'image tremble ou dérive, réduire `GFX_PCLK_HZ` dans `ML.h`, ou mettre `GFX_BOUNCE_PX` à 0.
+* `EEPROM.begin()` reçoit maintenant `EEPROM_TOTAL_BYTES` (2048) : 512 octets ne suffisaient pas pour 200 présélections.
+
+### Teensy
 
 1. **Prérequis matériels & logiciels :**
    - [Arduino IDE](https://www.arduino.cc/en/software) (version 1.8.x ou 2.x) avec l'extension [Teensyduino](https://www.pjrc.com/teensy/td_download.html).
@@ -196,6 +236,7 @@ Le contrôleur expose un port série virtuel USB permettant le contrôle à dist
 - `$memoryset <Index> <Fréquence_Hz> <Position>` : Enregistre une présélection.
 - `$memoryclear` : Efface toutes les présélections fréquence/position.
 - `$memorywipe` : Reconstitution complète de l'EEPROM (remise à zéro d'usine).
+- `$sdsave` / `$sdload` / `$sdstatus` : (ESP32-S3) sauvegarde, restauration et état de la carte SD.
 
 ### SWR & Autotune
 - `$swrtune` : Lance une procédure automatique d'accord SWR.

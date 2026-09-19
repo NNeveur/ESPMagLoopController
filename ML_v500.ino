@@ -58,12 +58,21 @@
 // _EEPROMAnything.h
 //
 
+#if defined(ARDUINO_ARCH_ESP32)
+// Touch screen and SD card libraries. Included before ML.h, which redefines the ESP32 macro.
+// Libraries to install: "GFX Library for Arduino" (moononournation) 1.6.x. SD and SPI come with the ESP32 core.
+#include <SPI.h>
+#include <SD.h>
+#include <Arduino_GFX_Library.h>
+#endif
+
 #include "ML.h"
 #include "_EEPROMAnything.h"
 
 #if defined(ESP32) || defined(PLATFORM_ESP32S3_TOUCH)
 #include <Wire.h>
 #include <EEPROM.h>
+#include "driver/gpio.h"              // gpio_set_direction() / gpio_set_pull_mode() (open drain for ICOM CI-V)
 
 class Metro {
 public:
@@ -294,8 +303,7 @@ void track_frq(void)
     flag.frq_xrange = true;     // Frequency is out of range
   }
   else flag.frq_xrange = false; // Frequency is within range
-  #endif
-  
+      
   // Indicate if capacitor position is outside of preset range 
   if (dir_of_travel == 1)       // Capacitor tunes in an ascending manner, Encoder clockwise = increase freqency
   {
@@ -325,7 +333,7 @@ void track_frq(void)
     if (stepper_track[ant] < (max_preset[ant].Pos - ENDSTOP_TOLERANCE)) flag.cap_lower_endstop = true;
     else flag.cap_lower_endstop = false;
   }
-
+  #endif
   //
   // Inside presets, It is OK to do stuff
   //
@@ -387,6 +395,7 @@ void track_frq(void)
     tunedFrq = derive_frq_from_pos();      // Calculate Tuned Frequency based on Stepper Pos
   }
   #endif
+
 }
 
 
@@ -479,6 +488,7 @@ void loop()
     // change from the last state.  Actual states determined with return
     // value from XX_button_push() and XX_button_toggle()
     //-------------------------------------------------------------------
+#if 1                                      // (was !ESP32) the touch buttons set up_button/dn_button, poll_xx() do nothing on ESP32
     poll_up_pushbutton();
     poll_dn_pushbutton();
         
@@ -495,7 +505,7 @@ void loop()
         Enc.write(+ENC_MENURESDIVIDE);     // Increment Encoder by one, in line with direction of Menu scroll
       }
     }
-
+#endif
     //-------------------------------------------------------------------
     // Pseudo-VFO mode
     //
@@ -603,7 +613,7 @@ void loop()
           #if ENDSTOP_OPT == 1                 // Vacuum Capacitor, no end stops
           // Movement is only possible if we are inside of known FRQ and CAP range
           //
-          // UP switch has been pressed and We're at or above min but below max      
+          // UP switch has been pressed and We're at or above min but below max
           if (up_button_push() && 
               ((dir_of_travel*stepper_track[ant]) >= (dir_of_travel*min_preset[ant].Pos)) && 
               ((dir_of_travel*stepper_track[ant]) < (dir_of_travel*max_preset[ant].Pos)))
@@ -611,11 +621,11 @@ void loop()
           // End_Stop switches can inhibit movement
           //
           // UP switch has been pushed and we're not at upper limit of range
-          if (up_button_push() && !flag.endstop_upper)          
+          if (up_button_push() && !flag.endstop_upper)
           #elif ENDSTOP_OPT == 3               // Butterfly capacitor, no end stops required
           // No movement inhibits whatsoever
           //
-          if (up_button_push() )               // UP switch has been pushed          
+          if (up_button_push() )               // UP switch has been pushed
           #endif
           {
             delta_Pos[ant]++;                  // Update position
@@ -626,16 +636,16 @@ void loop()
           #if ENDSTOP_OPT == 1                 // Vacuum Capacitor, no end stops
           // Movement is only possible if we are inside of known FRQ and CAP range
           //
-          // Down switch has been pressed and We're at or below max but above min      
-           else if ((dn_button_push() )
-                   && ((dir_of_travel*stepper_track[ant]) > (dir_of_travel*min_preset[ant].Pos))
-                   && ((dir_of_travel*stepper_track[ant]) <= (dir_of_travel*max_preset[ant].Pos)))
+          // Down switch has been pressed and We're at or below max but above min
+          else if ((dn_button_push() )
+                  && ((dir_of_travel*stepper_track[ant]) > (dir_of_travel*min_preset[ant].Pos))
+                  && ((dir_of_travel*stepper_track[ant]) <= (dir_of_travel*max_preset[ant].Pos)))
           #elif ENDSTOP_OPT == 2               // End stop sensors implemented
           // End_Stop switches can inhibit movement
           //
           // DOWN switch has been pushed and we're not at lower limit of range
-          else if (dn_button_push() && !flag.endstop_lower) 
-          #elif ENDSTOP_OPT == 3               // Butterfly capacitor, no end stops required          
+          else if (dn_button_push() && !flag.endstop_lower)
+          #elif ENDSTOP_OPT == 3               // Butterfly capacitor, no end stops required
           // No movement inhibits whatsoever
           //
           else if (dn_button_push() )          // DOWN switch has been pushed
@@ -663,7 +673,6 @@ void loop()
           }
           button_rate_reducer = UP_DOWN_RATE;  // Reduce stepper rate
         }
-        
         //-------------------------------------------------------------------
         // Manual Mode Move through stored memory presets
         //
@@ -672,6 +681,7 @@ void loop()
            && ((controller_settings.trx[controller_settings.radioprofile].radio != MAX_RADIO)
            || !controller_settings.pseudo_vfo))
         {
+#if 1                                      // (was !ESP32) UP/DOWN touch buttons step through the presets when the radio is offline
           if (up_button_toggle() )
           {
             // Fetch Frequency from the Next Higher Preset
@@ -695,6 +705,7 @@ void loop()
               running[ant].Frq = preset[range-1].Frq;              
             }
           }
+#endif
         }
         
         #if PSWR_AUTOTUNE       
@@ -703,6 +714,7 @@ void loop()
         //
         else if (swr.tune)
         {
+#if 1                                      // (was !ESP32) UP/DOWN touch buttons select the SWR tune direction
           if (up_button_toggle() )
           {
             swr.up_mode_request = true;        // Switch to Up Tune Mode
@@ -711,6 +723,7 @@ void loop()
           {
             swr.down_mode_request = true;      // Switch to Down Tune Mode
           }
+#endif
         }
         #endif        
       }
@@ -822,6 +835,7 @@ void loop()
     //-------------------------------------------------------------------
     // Multipurpose (Enact/Menu) Pushbutton state stuff
     //    
+#if !ESP32
     multi_button = multipurpose_pushbutton();    
     if (old_multi_button != multi_button)    // A new state of the Multi Purpose Pushbutton
     {
@@ -892,6 +906,7 @@ void loop()
       #endif // End PSWR_AUTOTUNE
     }
     old_multi_button = multi_button;
+#endif
   }
 
   #if PSWR_AUTOTUNE
@@ -1078,8 +1093,8 @@ void loop()
         if (poll_rate[controller_settings.trx[controller_settings.radioprofile].radio] == 9999) trx_poll();
       }                                  
 
-      #if PSWR_AUTOTUNE && RECALIBRATE && SW6_FOR_RECAL
-      // Stepper Recalibrate Request received from SW6
+      #if RECALIBRATE
+      // Stepper Recalibrate Request received from SW6 or from the RECAL touch button
       if (flag.stepper_recalibrate)
       {
         flag.stepper_recalibrate = false;
@@ -1092,7 +1107,7 @@ void loop()
     usb_cont_report();                     // Report Power and SWR to USB, if in Continuous mode
     #endif
 
-    #if ANT_CHG_2BANKS && !ANT1_CHANGEOVER // Dual memory banks for two Antennas, read Antenna Changeover Switch
+    #if ANT_CHG_2BANKS && !ANT1_CHANGEOVER && !ESP32 // Dual memory banks for two Antennas, read Antenna Changeover Switch
     static int32_t ant_previous;
     // Determine which antenna is selected
     if (digitalRead(ChgOvSW) == HIGH) ant1_changeover = 0;
@@ -1110,6 +1125,9 @@ void loop()
   if (lcd_Metro.check() )                  // check if the metro has passed its interval .
   {
     lcd_display();
+    #if defined(ESP32) && SD_ENABLED
+    sd_service();                          // SD backup: autosave, restore, results
+    #endif
   }
 
   //-------------------------------------------------------------------------------
@@ -1134,84 +1152,20 @@ void loop()
   }
 }
 
-//-----------------------------------------------------------------------------------------
-// SD Card Backup and Restore functions
-//-----------------------------------------------------------------------------------------
-bool sd_save_presets(void)
-{
-#if defined(ESP32) || defined(PLATFORM_ESP32S3_TOUCH)
-  if (!SD.begin()) {
-    return false;
-  }
-  File file = SD.open("/ml_presets.txt", FILE_WRITE);
-  if (!file) {
-    return false;
-  }
-  file.println("# Magnetic Loop Controller Presets");
-  for (uint16_t i = 0; i < MAX_PRESETS; i++) {
-    if (preset[i].Frq > 0) {
-      file.print(i);
-      file.print(" ");
-      file.print(preset[i].Frq);
-      file.print(" ");
-      file.println(preset[i].Pos);
-    }
-  }
-  file.close();
-  return true;
-#else
-  return false;
-#endif
-}
-
-bool sd_load_presets(void)
-{
-#if defined(ESP32) || defined(PLATFORM_ESP32S3_TOUCH)
-  if (!SD.begin()) {
-    return false;
-  }
-  File file = SD.open("/ml_presets.txt", FILE_READ);
-  if (!file) {
-    return false;
-  }
-  init_Presets();
-  while (file.available()) {
-    String line = file.readStringUntil('\n');
-    line.trim();
-    if (line.length() == 0 || line.startsWith("#")) continue;
-    int idx = -1;
-    long frq = 0, pos = 0;
-    if (sscanf(line.c_str(), "%d %ld %ld", &idx, &frq, &pos) >= 3) {
-      if (idx >= 0 && idx < MAX_PRESETS) {
-        preset[idx].Frq = frq;
-        preset[idx].Pos = pos;
-      }
-    }
-  }
-  file.close();
-
-  preset_sort();
-  EEPROM_writeAnything(148, preset);
-#if defined(ESP32) || defined(PLATFORM_ESP32S3_TOUCH)
-  EEPROM.commit();
-#endif
-  determine_preset_bounds();
-  determine_active_range(running[ant].Frq);
-  return true;
-#else
-  return false;
-#endif
-}
-
 void setup()
 {
   uint8_t coldstart;
 
 #if defined(ESP32) || defined(PLATFORM_ESP32S3_TOUCH)
-  EEPROM.begin(512);
+  EEPROM.begin(EEPROM_TOTAL_BYTES);        // 148 + 8 x MAX_PRESETS bytes are needed, 512 was too small
   Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN, 400000);
-  gt911_init();
-  SD.begin();
+  board_init();                            // CH422G: LCD/touch reset, SD deselected, backlight still off
+  #if GFX_ENABLED
+  gfx_init();                              // RGB panel, virtual LCD look-alike, touch buttons, backlight on
+  #endif
+  #if SD_ENABLED
+  sd_init();                               // mount the SD card, start the backup task
+  #endif
 #endif
 
   #if RS485STEPPER
@@ -1222,7 +1176,7 @@ void setup()
 #endif
   rs485_Init(ant);                   // Power down the stepper
   #endif
-  
+#if !ESP32  
   if (EnactSW >= 0) pinMode(EnactSW, INPUT_PULLUP);          // Initialize Switches as input
   if (UpSW >= 0) pinMode(UpSW, INPUT_PULLUP);
   if (DnSW >= 0) pinMode(DnSW, INPUT_PULLUP);
@@ -1244,7 +1198,10 @@ void setup()
   pinMode(profile_bit2, OUTPUT);
 
   pinMode(swralarm_bit, OUTPUT);           // Enable an SWR Alarm Output
-  
+  #endif
+  #if defined(ESP32) && SD_ENABLED
+  sd_boot_restore_if_blank();              // Brand new board with a backup on the SD card: fill the EEPROM from it
+  #endif
   coldstart = EEPROM.read(0);              // Grab the coldstart byte indicator in EEPROM for
                                            // comparison with the COLDSTART_REFERENCE
   //
@@ -1352,7 +1309,7 @@ void setup()
   if (running[0].Frq >= ant2_changeover ) ant = 2;
   else if (running[0].Frq >= ant1_changeover ) ant = 1;
   
-  #elif ANT_CHG_2BANKS && !ANT1_CHANGEOVER       // Dual Antenna Changeover mode, Two memory banks and
+  #elif ANT_CHG_2BANKS && !ANT1_CHANGEOVER && !ESP32       // Dual Antenna Changeover mode, Two memory banks and
   pinMode(ChgOvSW, INPUT_PULLUP);                // enable Manual antenna Changeover Switch  
   // Determine which antenna is selected
   if (digitalRead(ChgOvSW) == HIGH) ant1_changeover = 0;
@@ -1361,8 +1318,9 @@ void setup()
   #endif
   
   // Initialize an output pin to indicate which antenna is selected, if feature is in use.
+  #if !defined(ESP32)
   #if ANALOGOUTPIN                               // Pin A14
-  analogWriteResolution(8);
+  analogWriteResolution(8);                      // Teensy only. ESP32 analogWrite() is 8 bit by default
   analogWrite(ant1_select, (ant==1)?255:0);      // and set to selected antenna
   #else                                          // Alternate, Pin 27 (defined in ML.h)
   pinMode(ant1_select, OUTPUT);                  // Enable Antenna Select bit
@@ -1376,7 +1334,7 @@ void setup()
   else digitalWrite(profile_bit1, LOW);
   if (controller_settings.radioprofile & 0x02) digitalWrite(profile_bit2, HIGH);
   else digitalWrite(profile_bit2, LOW);
-
+#endif
   step_rate = controller_settings.step_rate;
   step_speedup = controller_settings.step_speedup;
   microstep_resolution = controller_settings.microsteps;
@@ -1485,6 +1443,10 @@ void setup()
   virt_lcd_setCursor(0,3);
   sprintf(print_buf,"Version: %s", VERSION);
   virt_lcd_print(print_buf);
+  #if GFX_ENABLED
+  gfx_flush_now();                         // Draw the start-up messages on the touch screen
+  delay(2000);
+  #endif
 #endif
 
   //------------------------------------------

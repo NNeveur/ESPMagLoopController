@@ -285,9 +285,10 @@ const char helpstring[] PROGMEM = {
             "$memoryclear       clear all frequency/position memories, same as Menu command (4).\r\n"
             "$memorywipe        full EEPROM wipe - clear all frq/pos memories and all settings to default.\r\n"
             "\r\n"
-            "SD Card Commands:\r\n"
-            "$sdsave / $sdbackup Save all preset memories to SD card (/ml_presets.txt).\r\n"
-            "$sdload / $sdrestore Restore preset memories from SD card (/ml_presets.txt).\r\n"
+            "SD card backup (ESP32-S3 touch board):\r\n"
+            "$sdsave            Save memories and settings to the SD card.\r\n"
+            "$sdload            Restore memories and settings from the SD card, then restart.\r\n"
+            "$sdstatus          Report the SD card status.\r\n"
             "\r\n"
             "$help              Display the above instructions.\r\n"
             "\r\n" };                   
@@ -847,22 +848,27 @@ void usb_parse_incoming(void)
     SOFT_RESET();
   }
 
-  else if (!strcasecmp("sdsave",incoming_command_string) || !strcasecmp("sdbackup",incoming_command_string))
+  else if (!strcasecmp("sdsave",incoming_command_string))        // Save memories/settings to SD card
   {
-    if (sd_save_presets()) {
-      Serial.println(F("SD Save Presets Success"));
-    } else {
-      Serial.println(F("SD Save Presets Failed"));
+    if (sd_request_save())
+    {
+      Serial.println(F("$sdsave"));
+      sd_report_to_usb();                                        // Result is printed when the card is done
     }
+    else Serial.println(F("$sdsave: SD busy or not available"));
   }
-
-  else if (!strcasecmp("sdload",incoming_command_string) || !strcasecmp("sdrestore",incoming_command_string))
+  else if (!strcasecmp("sdload",incoming_command_string))        // Restore memories/settings from SD card
   {
-    if (sd_load_presets()) {
-      Serial.println(F("SD Load Presets Success"));
-    } else {
-      Serial.println(F("SD Load Presets Failed"));
+    if (sd_request_restore())
+    {
+      Serial.println(F("$sdload"));
+      sd_report_to_usb();
     }
+    else Serial.println(F("$sdload: SD busy or not available"));
+  }
+  else if (!strcasecmp("sdstatus",incoming_command_string))      // SD card status
+  {
+    Serial.println(sd_get_message());
   }
 
   else if (!strcasecmp("softreset",incoming_command_string))     // Reset Microcontroller

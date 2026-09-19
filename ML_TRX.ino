@@ -127,7 +127,7 @@ uint16_t trx_mode=0;    // LSB, USB, CW, AM etc... AM while SWR tune
                            DEFAULT_TENTEC_MODE,
                            DEFAULT_PSEUDOVFO_MODE };
                            
- const uint16_t valid_uart_config[] =
+ const uint32_t valid_uart_config[] =
                         {  ICOM_CONFIG,
                            ICOM_CONFIG,
                            KENWOOD8N2_CONFIG,
@@ -147,7 +147,7 @@ uint16_t trx_mode=0;    // LSB, USB, CW, AM etc... AM while SWR tune
                            TENTEC_CONFIG,
                            PSEUDOVFO_CONFIG };
 
- const uint16_t valid_uart_config_inv[] =
+ const uint32_t valid_uart_config_inv[] =
                         {  ICOM_CONFIG_INV,
                            ICOM_CONFIG_INV,
                            KENWOOD8N2_CONFIG_INV,
@@ -3111,8 +3111,9 @@ void trx_restore_mode(void)
 //---------------------------------------------------------------------------------
 void trx_set_tx(void)
 {
+  #if !ESP32
   digitalWrite(hardware_ptt, HIGH);    // Set Hardware PTT to On  
-  
+  #endif
   switch (controller_settings.trx[controller_settings.radioprofile].radio)
   {
     case 0:                            // ICOM
@@ -3221,8 +3222,10 @@ void trx_set_rx(void)
       tentec_ascii_set_rx();   
       break;
     default:;                          // Pseudo-VFO - do nothing
-  }  
+  }
+  #if !ESP32  
   digitalWrite(hardware_ptt, LOW);     // Set Hardware PTT to Off
+  #endif
 }
 
 //---------------------------------------------------------------------------------
@@ -3320,14 +3323,24 @@ void trx_parameters_set(uint8_t which_trx)
   if (controller_settings.trx[which_trx].rs232rate < 6) rs232rate = 1200 * (1 << controller_settings.trx[which_trx].rs232rate);  // 1200 - 38200 b/s
   else if (controller_settings.trx[which_trx].rs232rate == 6) rs232rate = 57600;      // 57600 b/s
   else rs232rate = 115200;                                             // 115200 b/s
+#if defined(ESP32)
+  // ESP32: polarity (TTL / RS232) is an argument of begin(), config word is the same for both
+  Uart.begin(rs232rate, valid_uart_config[controller_settings.trx[which_trx].radio],
+             Uart_RXD, Uart_TXD, (controller_settings.trx[which_trx].sig_mode != 0));
+#else
   Uart.begin(rs232rate, (controller_settings.trx[which_trx].sig_mode==0) ? 
          valid_uart_config[controller_settings.trx[which_trx].radio] : valid_uart_config_inv[controller_settings.trx[which_trx].radio]);
+#endif
          
   // For ICOM Radios set UART output with Open Drain and Pullup
   // (ICOM CI-V bus is a single-wire bi-directional bus requiring open-drain TX and pullup RX)
   if (controller_settings.trx[which_trx].radio < 2)
   {
-#if defined(ARDUINO_TEENSY40) || defined(ARDUINO_TEENSY41) || defined(__IMXRT1052__)
+#if defined(ESP32)
+    // ESP32: open drain TX and pullup on RX (direct GPIO config keeps the UART routing intact)
+    gpio_set_direction((gpio_num_t)Uart_TXD, GPIO_MODE_INPUT_OUTPUT_OD);
+    gpio_set_pull_mode((gpio_num_t)Uart_RXD, GPIO_PULLUP_ONLY);
+#elif defined(ARDUINO_TEENSY40) || defined(ARDUINO_TEENSY41) || defined(__IMXRT1052__)
     // Teensy 4.0/4.1 (ARM Cortex-M7 / i.MX RT1062) open drain and pullup configuration
     pinMode(Uart_TXD, OUTPUT_OPENDRAIN);                               // Open Drain Enable on Teensy 4.x
     pinMode(Uart_RXD, INPUT_PULLUP);                                  // Pullup Enable on Teensy 4.x
@@ -3340,7 +3353,11 @@ void trx_parameters_set(uint8_t which_trx)
   // Set UART function normal for all other Radios - Needed if switching back from ICOM
   else
   {
-#if defined(ARDUINO_TEENSY40) || defined(ARDUINO_TEENSY41) || defined(__IMXRT1052__)
+#if defined(ESP32)
+    // ESP32: back to normal push-pull TX and floating RX
+    gpio_set_direction((gpio_num_t)Uart_TXD, GPIO_MODE_INPUT_OUTPUT);
+    gpio_set_pull_mode((gpio_num_t)Uart_RXD, GPIO_FLOATING);
+#elif defined(ARDUINO_TEENSY40) || defined(ARDUINO_TEENSY41) || defined(__IMXRT1052__)
     // Restore normal push-pull TX and standard input RX on Teensy 4.x
     pinMode(Uart_TXD, OUTPUT);                                         // Push-Pull Output
     pinMode(Uart_RXD, INPUT);                                          // Standard Input
@@ -3363,12 +3380,13 @@ void trx_parameters_set(uint8_t which_trx)
 //---------------------------------------------------------------------------------
 void trx_profile_update(void)
 {
+#if !ESP32
   // Set out bits to indicate which Radio Settings Profile is active
   if (controller_settings.radioprofile & 0x01) digitalWrite(profile_bit1, HIGH);
   else digitalWrite(profile_bit1, LOW);
   if (controller_settings.radioprofile & 0x02) digitalWrite(profile_bit2, HIGH);
   else digitalWrite(profile_bit2, LOW);
-
+#endif
   radio_selection = controller_settings.trx[controller_settings.radioprofile].radio;
   rs232_signals = controller_settings.trx[controller_settings.radioprofile].sig_mode + (controller_settings.trx[controller_settings.radioprofile].passthrough << 1);
   rs232_rate = controller_settings.trx[controller_settings.radioprofile].rs232rate;  

@@ -102,6 +102,7 @@
 //
 
 char    virt_lcd[81];     // Character array representing what is pending for LCD
+bool    ui_activity = false;  // Set by the touch screen, wakes up the screensaver
 uint8_t virt_x, virt_y;   // x and y coordinates for LCD
 //
 //-----------------------------------------------------------------------------------------
@@ -112,162 +113,14 @@ uint8_t virt_x, virt_y;   // x and y coordinates for LCD
 //      the transfer (30/step_rate ~ step_rate 10 equals 1ms, step_rate 15 equals 667us)
 //-----------------------------------------------------------------------------------------
 //
-#if defined(PLATFORM_ESP32S3_TOUCH) || defined(ESP32)
-// GT911 Touch Controller Implementation for Waveshare ESP32-S3-TOUCH-LCD-7
-#define GT911_I2C_ADDR1 0x5D
-#define GT911_I2C_ADDR2 0x14
-
-static uint8_t gt911_addr = GT911_I2C_ADDR1;
-
-void gt911_init(void) {
-  Wire1.beginTransmission(GT911_I2C_ADDR1);
-  if (Wire1.endTransmission() != 0) {
-    gt911_addr = GT911_I2C_ADDR2;
-  }
-}
-
-void process_touch(void) {
-  static unsigned long last_touch_ms = 0;
-  static bool was_pressed = false;
-
-  Wire1.beginTransmission(gt911_addr);
-  Wire1.write(0x81);
-  Wire1.write(0x4E);
-  if (Wire1.endTransmission() != 0) return;
-
-  Wire1.requestFrom((uint8_t)gt911_addr, (uint8_t)1);
-  if (!Wire1.available()) return;
-  uint8_t status = Wire1.read();
-
-  uint8_t touch_count = status & 0x0F;
-  if ((status & 0x80) == 0 || touch_count == 0) {
-    Wire1.beginTransmission(gt911_addr);
-    Wire1.write(0x81);
-    Wire1.write(0x4E);
-    Wire1.write(0x00);
-    Wire1.endTransmission();
-    if (was_pressed) {
-      was_pressed = false;
-    }
-    return;
-  }
-
-  // Read first touch point BEFORE clearing buffer flag
-  Wire1.beginTransmission(gt911_addr);
-  Wire1.write(0x81);
-  Wire1.write(0x4F);
-  Wire1.endTransmission();
-
-  Wire1.requestFrom((uint8_t)gt911_addr, (uint8_t)4);
-  if (Wire1.available() < 4) {
-    Wire1.beginTransmission(gt911_addr);
-    Wire1.write(0x81);
-    Wire1.write(0x4E);
-    Wire1.write(0x00);
-    Wire1.endTransmission();
-    return;
-  }
-
-  uint8_t x_lsb = Wire1.read();
-  uint8_t x_msb = Wire1.read();
-  uint8_t y_lsb = Wire1.read();
-  uint8_t y_msb = Wire1.read();
-
-  // Clear touch buffer flag AFTER reading coordinates
-  Wire1.beginTransmission(gt911_addr);
-  Wire1.write(0x81);
-  Wire1.write(0x4E);
-  Wire1.write(0x00);
-  Wire1.endTransmission();
-
-  uint16_t x = x_lsb | (x_msb << 8);
-  uint16_t y = y_lsb | (y_msb << 8);
-
-  // Debounce touches
-  if (millis() - last_touch_ms < 150) return;
-  last_touch_ms = millis();
-  was_pressed = true;
-
-  // Process touch actions based on coordinates on 800x480 screen
-  // Row 1: Virtual Rotary Encoder / Stepping (Y: 230 - 330)
-  if (y >= 230 && y <= 330) {
-    if (x >= 20 && x <= 190) {        // [ << FAST ]
-      Enc.pos -= 16;
-    } else if (x >= 210 && x <= 380) { // [ < STEP ]
-      Enc.pos -= 2;
-    } else if (x >= 420 && x <= 590) { // [ STEP > ]
-      Enc.pos += 2;
-    } else if (x >= 610 && x <= 780) { // [ FAST >> ]
-      Enc.pos += 16;
-    }
-  }
-  // Row 2: Switches & Antenna Selection & SD Card Actions (Y: 350 - 460)
-  else if (y >= 350 && y <= 460) {
-    if (x >= 20 && x <= 120) {         // [ MENU ]
-      flag.short_push = true;
-    } else if (x >= 130 && x <= 210) { // [ UP ]
-      up_toggle = true;
-      up_button = true;
-    } else if (x >= 220 && x <= 300) { // [ DOWN ]
-      dn_toggle = true;
-      dn_button = true;
-    } else if (x >= 310 && x <= 410) { // [ SWR TUNE ]
-      #if PSWR_AUTOTUNE
-      swr.tune_request = true;
-      SWRtune_timer = SWRTUNE_TIMEOUT;
-      #endif
-    } else if (x >= 420 && x <= 510) { // [ RECAL ]
-      flag.stepper_recalibrate = true;
-    } else if (x >= 520 && x <= 610) { // [ ANT SEL ]
-      ant = (ant + 1) % 3;
-      antenna_select(running[ant].Frq);
-      #if RS485STEPPER
-      rs485_SelectAntenna(ant);
-      #endif
-    } else if (x >= 620 && x <= 695) { // [ SD SAVE ]
-      sd_save_presets();
-    } else if (x >= 705 && x <= 780) { // [ SD LOAD ]
-      sd_load_presets();
-    }
-  }
-}
-#endif
-
-void render_touch_lcd(void) {
-  static char prev_lcd[81];
-  static bool first_run = true;
-
-  if (first_run || memcmp(prev_lcd, virt_lcd, 80) != 0) {
-    memcpy(prev_lcd, virt_lcd, 80);
-    prev_lcd[80] = 0;
-    first_run = false;
-
-    // Render 20x4 LCD Crystal display on Serial / Touch Screen canvas
-    Serial.println(F("+--------------------+"));
-    for (uint8_t r = 0; r < 4; r++) {
-      Serial.print("|");
-      for (uint8_t c = 0; c < 20; c++) {
-        uint8_t ch = (uint8_t)virt_lcd[r * 20 + c];
-        if (ch == 0) Serial.print(" ");
-        else if (ch == 1) Serial.print("-");
-        else if (ch == 2) Serial.print("=");
-        else if (ch == 3) Serial.print("=");
-        else if (ch == 4) Serial.print("#");
-        else if (ch == 5) Serial.print("#");
-        else if (ch == 6) Serial.print("|");
-        else Serial.print((char)ch);
-      }
-      Serial.println("|");
-    }
-    Serial.println(F("+--------------------+"));
-  }
-}
+// ESP32-S3 Touch LCD: the 20x4 LCD is imitated on the 800x480 touch screen and the touch
+// buttons are served by ML_GFX.ino (GT911 driver, button drawing and actions, SD popup).
+// The old GT911 code that lived here read the coordinates one byte off, it has been replaced.
 
 void virt_LCD_to_real_LCD(void)
 {
 #if defined(PLATFORM_ESP32S3_TOUCH) || defined(ESP32)
-  process_touch();
-  render_touch_lcd();
+  gfx_service();                                    // draw changed characters on the touch screen, serve touch buttons
 #else
   static char    real_lcd[81];                      // Character array representing what is visible on LCD
   static uint8_t character;                         // Character position on LCD, as 0 - 79
@@ -1258,6 +1111,17 @@ void lcd_display(void)
   {
     screensave_timer = 0;
     flag.screensaver = false;
+  }
+  // A touch on the screen wakes up the screensaver
+  else if (ui_activity)
+  {
+    ui_activity = false;
+    screensave_timer = 0;
+    if (flag.screensaver)
+    {
+      flag.screensaver = false;
+      virt_lcd_clear();
+    }
   }
   // Reset Screensaver counter if new frequency
   else if (running[ant].Frq != old_frq)

@@ -32,10 +32,9 @@
 
 #include <Arduino.h>
 
-#if defined(ESP32) || defined(PLATFORM_ESP32S3_TOUCH)
-#include <SPI.h>
-#include <SD.h>
-#endif
+// UP/DOWN button state, defined in ML__Switches_and_Stepper.ino but also set by the touch
+// buttons in ML_Display.ino (which is compiled earlier => needs a forward declaration)
+extern int8_t up_button, up_toggle, dn_button, dn_toggle;
 
 #define  VERSION "5.00"
 #define  DATE    "2026-09-18"
@@ -45,10 +44,12 @@
 // Features Selection
 //-----------------------------------------------------------------------------  
 //
-
+#ifdef ESP32
+#undef ESP32                 // The Arduino-ESP32 core defines ESP32 without a value, so #if !ESP32
+#endif                       // would still be true.  Give it the value 1 (used all over the sketch).
+#define ESP32  1
 //-----------------------------------------------------------------------------
 // Definitions for Hardware implementation
-//
 //-----------------------------------------------------------------------------
 //#define DRV8825STEPPER     0    // Set 1 if DRV8825 stepper drivers
 //#define A4975STEPPER       0    // Set 1 if 2x Allegro A4975 stepper drivers
@@ -390,6 +391,12 @@
 #define DEFAULT_PSEUDOVFO_MODE    1  // Not used, but need to have something here
 //
 // Valid Serial Port Parameters
+// ESP32 Arduino core: SERIAL_8N1_RXINV_TXINV / SERIAL_8N2_RXINV_TXINV do not exist (Teensy only).
+// Polarity is selected with the 'invert' argument of HardwareSerial::begin(), see trx_parameters_set().
+#if defined(ESP32)
+#define SERIAL_8N1_RXINV_TXINV SERIAL_8N1
+#define SERIAL_8N2_RXINV_TXINV SERIAL_8N2
+#endif
 #define ICOM_CONFIG            SERIAL_8N1              // TTL Polarity
 #define ICOM_CONFIG_INV        SERIAL_8N1_RXINV_TXINV  // RS232 Polarity
 #define KENWOOD8N2_CONFIG      SERIAL_8N2              // If Kenwood rate is 4800 b/s or lower,
@@ -491,6 +498,47 @@ const char *radiotext[] = { "ICOM generic CI-V",
                                   
 #define  ENACT_MIN          20    // Minimum Menu/Enact push for "short push" (x 1 ms)
 #define  ENACT_MAX        1000    // Minimum Menu/Enact push for Menu Mode (x 1 ms)
+
+//-----------------------------------------------------------------------------
+// Touch screen display (Waveshare ESP32-S3-Touch-LCD-7, 800x480) - see ML_GFX.ino
+// The 20x4 character LCD of the original design is imitated (HD44780 dot matrix)
+// in the upper part of the screen, touch buttons are drawn below it.
+#define GFX_ENABLED              1    // 0 = no display driver at all (headless build)
+#define LCD_THEME                0    // 0 = white on blue (backlit STN), 1 = dark on green/yellow
+#define GFX_PCLK_HZ       16000000    // RGB pixel clock.  Official Waveshare value is 16 MHz
+#define GFX_BOUNCE_PX        (800*10) // RGB bounce buffer (pixels), 0 to disable.  Official Waveshare value
+#define UI_SD_POPUP_TIMEOUT     300   // SD popup closes by itself after this many units of 100 ms
+
+//-----------------------------------------------------------------------------
+// Waveshare ESP32-S3-Touch-LCD-7 board pins (fixed by the hardware)
+#define TOUCH_INT_PIN             4   // GT911 interrupt (held LOW during reset to select address 0x5D)
+#define SD_MOSI_PIN              11
+#define SD_SCK_PIN               12
+#define SD_MISO_PIN              13
+// SD chip select is NOT a GPIO: it is EXIO4 of the CH422G I/O expander.  The Arduino SD
+// library still wants a real GPIO for its own CS handling, this one is toggled but left
+// unconnected.  Change it if you have wired something to this GPIO.
+#define SD_DUMMY_CS_PIN           6
+// CH422G I/O expander (same I2C bus as the touch controller), output bit numbers
+#define EXIO_TP_RST               1   // touch reset
+#define EXIO_LCD_BL               2   // backlight
+#define EXIO_LCD_RST              3   // LCD reset
+#define EXIO_SD_CS                4   // SD card chip select, active low
+#define EXIO_USB_SEL              5   // 0 = USB port connected to the ESP32-S3, 1 = CAN transceiver
+
+//-----------------------------------------------------------------------------
+// SD card backup of memories (frequency/position presets) and controller settings
+// File: SD_BACKUP_FILE (text, human readable).  Previous version is kept as SD_BACKUP_PREV.
+#define SD_ENABLED               1    // 0 = no SD support
+#define SD_BACKUP_DIR         "/ML_v500"
+#define SD_BACKUP_FILE        "/ML_v500/backup.txt"
+#define SD_BACKUP_PREV        "/ML_v500/backup.bak"
+#define SD_BACKUP_TMP         "/ML_v500/backup.tmp"
+#define SD_SPI_HZ          4000000    // SD SPI clock
+#define SD_AUTOSAVE              1    // 1 = save automatically after presets/settings were changed
+#define SD_AUTOSAVE_DELAY      100    // ...once nothing changed for this many units of 100 ms (10 s)
+#define SD_AUTORESTORE_BLANK     1    // 1 = at boot, restore from SD if the EEPROM is completely blank
+                                      //     (new board / erased flash) and a valid backup exists
 
 //-----------------------------------------------------------------------------
 // Definitions for Stepper Motor Backlash
@@ -599,6 +647,14 @@ const int8_t Uart_TXD      = 43;
 // RS485 (serial port) uses Pins 0 and 1
 const int8_t Rs485_RXD      = 16;
 const int8_t Rs485_TXD      = 15;
+// I2C bus (GT911 touch controller). Waveshare ESP32-S3-Touch-LCD-7 : SDA=GPIO8, SCL=GPIO9
+#ifndef I2C_SDA_PIN
+#define I2C_SDA_PIN  8
+#endif
+#ifndef I2C_SCL_PIN
+#define I2C_SCL_PIN  9
+#endif
+#if !ESP32
 #if PSWR_AUTOTUNE
 const int EnactSW          = A9;  // Analog Input 9, Equals pin 23
 #else
@@ -653,7 +709,7 @@ const int bnd_bit2    =  25;  // two binary signal pins for four bands.
 const int profile_bit1=  31;  // Radio Profile switching  signals, pads underneath the Teensy 3.1/3.2,
 const int profile_bit2=  32;  // two binary signal pins for four profiles.
 const int swralarm_bit=  33;  // SWR alarm output whenever SWR is higher than Menu Preset
-
+#endif
 //
 //-----------------------------------------------------------------------------
 // Don't touch any of the stuff below - unless you really know what you're doing
@@ -788,6 +844,16 @@ typedef struct  {
                 } var_track;             // 64 bits, 8 bytes
 
 //-----------------------------------------------------------------------------
+// EEPROM layout: settings at 1, running at 100, delta_Pos at 124, stepper_track at 136, presets at 148.
+// On the ESP32 the EEPROM emulation must be told its size (EEPROM.begin), 512 bytes were too small
+// for 200 presets (148 + 8 x 200 = 1748 bytes).  Max 4096 on ESP32.
+#define EEPROM_PRESET_ADDR   148
+#define EEPROM_TOTAL_BYTES  2048
+#if (EEPROM_PRESET_ADDR + 8*MAX_PRESETS) > EEPROM_TOTAL_BYTES
+#error "MAX_PRESETS does not fit into EEPROM_TOTAL_BYTES, increase EEPROM_TOTAL_BYTES (max 4096)"
+#endif
+
+//-----------------------------------------------------------------------------
 // Bool stuff
 #define WORKING    0 
 #define DONE       1
@@ -797,9 +863,13 @@ typedef struct  {
 
 //-----------------------------------------------------------------------------
 // Soft Reset Teensy 3 style
+#if defined(ESP32)
+#define SOFT_RESET()       ESP.restart()         // ESP32: the Teensy SCB_AIRCR address below does not exist
+#else
 #define RESTART_ADDR       0xE000ED0C
 #define RESTART_VAL        0x5FA0004
 #define SOFT_RESET()       ((*(volatile uint32_t *)RESTART_ADDR) = (RESTART_VAL))
+#endif
 
 //-----------------------------------------------------------------------------
 // Macros
@@ -813,6 +883,14 @@ typedef struct  {
 extern const uint16_t poll_rate[];
 extern const uint16_t default_plevel[];
 
-// SD Card Preset Backup & Restore functions
-bool sd_save_presets(void);
-bool sd_load_presets(void);
+// Virtual 20x4 LCD (ML_Display.ino) and its bargraph symbols, read by the touch screen renderer (ML_GFX.ino)
+extern char virt_lcd[81];
+extern const uint8_t LcdCustomChar[7][8];
+extern bool ui_activity;              // set by the touch screen: wakes up the screensaver
+
+// SD card status codes, see ML_SD.ino
+#define SD_ST_NONE     0              // support disabled, or no usable card
+#define SD_ST_READY    1              // card mounted, idle
+#define SD_ST_BUSY     2              // save or restore in progress
+#define SD_ST_OK       3              // last operation succeeded
+#define SD_ST_ERR      4              // last operation failed, see sd_get_message()

@@ -403,13 +403,13 @@ void antenna_select(int32_t frq)
     rs485_PwrOff(ant);                                  // Cut motor current
     #endif    
     delayloop(50);                                   // Delay time for current decay
-    #if ANALOGOUTPIN
-    analogWrite(ant1_select, (ant==1)?255:0);        // Select 2nd Antenna on/off
-    #else
-    digitalWrite(ant1_select, (ant==1)?HIGH:LOW);    // Select 2nd Antenna on/off
-    #endif
-    digitalWrite(ant2_select, (ant==2)?HIGH:LOW);    // Select 3rd Antenna on/off
-    delayloop(50);                                   // Delay time for relay settling            
+//    #if ANALOGOUTPIN
+//    analogWrite(ant1_select, (ant==1)?255:0);        // Select 2nd Antenna on/off
+//    #else
+//    digitalWrite(ant1_select, (ant==1)?HIGH:LOW);    // Select 2nd Antenna on/off
+//    #endif
+//    digitalWrite(ant2_select, (ant==2)?HIGH:LOW);    // Select 3rd Antenna on/off
+//    delayloop(50);                                   // Delay time for relay settling            
     old_ant = ant;                                   // Update antenna select memory
   } 
 }
@@ -1000,7 +1000,6 @@ void rotate_stepper_b(uint8_t microstep_rate, uint8_t backlash_comp)
   // than first pos
   if ((num_presets[ant] >= 2) && (max_preset[ant].Pos < min_preset[ant].Pos)) dir_of_travel = -1;
   else dir_of_travel = 1;
-  
   //
   // Position the Stepper according to Frequency
   //
