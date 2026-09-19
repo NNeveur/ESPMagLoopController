@@ -166,10 +166,10 @@ void calculate_SWR(double v_fwd, double v_ref)
   }
 
   // Assert SWR Alarm bit if SWR is above acceptable
-  if (measured_swr > (controller_settings.swr_ok + 10)/10.0)
-    digitalWrite(swralarm_bit, HIGH);  // Assert SWR Alarm 
-  else 
-    digitalWrite(swralarm_bit, LOW);   // DeAssert SWR Alarm 
+//  if (measured_swr > (controller_settings.swr_ok + 10)/10.0)
+//    digitalWrite(swralarm_bit, HIGH);  // Assert SWR Alarm 
+//  else 
+//    digitalWrite(swralarm_bit, LOW);   // DeAssert SWR Alarm 
 }
 
 
