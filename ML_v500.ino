@@ -777,7 +777,7 @@ void loop()
     #else
     frq = tunedFrq;                   // Frequency informaiton calculated from position of variable capacitor
     #endif
-    if (frq >= bnd3_changeover[ant])
+/*    if (frq >= bnd3_changeover[ant])
     {
       digitalWrite(bnd_bit1,HIGH);    // Bit order can easily be modified by swapping HIGH / LOW
       digitalWrite(bnd_bit2,HIGH);    // Default pins for bnd_select1 and 2 are 24 and 25 (pads underneath microcontroller)
@@ -797,12 +797,12 @@ void loop()
       digitalWrite(bnd_bit1,LOW);
       digitalWrite(bnd_bit2,LOW);
     }
-
+*/
     #if RS485STEPPER  // ML.h selection: A Pololu (Allegro) A4988 or (TI) 8825 Stepper motor controller carrier board
     //-------------------------------------------------------------------
     // Finalize stepper Move Pulse
     //
-    rs485_Move();
+    rs485_Move(ant);
     #endif
 
     //-------------------------------------------------------------------
@@ -1001,7 +1001,7 @@ void loop()
       if (frq_store_timer >= 10)            // Power down stepper if stable for 1 second
       {                                
         #if RS485STEPPER
-        rs485_PwrOff();                   // Power down the stepper
+        rs485_PwrOff(ant);                   // Power down the stepper
         #endif
       }
     }
@@ -1150,7 +1150,7 @@ void setup()
 #else
   Rs485.begin(9600);                                   // initialize USB virtual serial serial port
 #endif
-  rs485_Init();                   // Power down the stepper
+  rs485_Init(ant);                   // Power down the stepper
   #endif
   
   if (EnactSW >= 0) pinMode(EnactSW, INPUT_PULLUP);          // Initialize Switches as input
@@ -1432,9 +1432,9 @@ void setup()
     {
       for (uint8_t i = 0; i < microstep; i++)
       {
-        rs485_Incr(0);
+        rs485_Incr(0, ant);
         delay(1);
-        rs485_Move();
+        rs485_Move(ant);
       }
     }
     else                 // Negative direction
@@ -1442,13 +1442,13 @@ void setup()
       microstep = 8 - microstep;
       for (uint8_t i = 0; i < microstep; i++)
       {
-        rs485_Incr(0);
+        rs485_Incr(0, ant);
         delay(1);
-        rs485_Move();
+        rs485_Move(ant);
       }      
     }
     delay(100);
-    rs485_PwrOff();
+    rs485_PwrOff(ant);
   }
   #endif
   
