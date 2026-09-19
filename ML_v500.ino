@@ -1134,6 +1134,75 @@ void loop()
   }
 }
 
+//-----------------------------------------------------------------------------------------
+// SD Card Backup and Restore functions
+//-----------------------------------------------------------------------------------------
+bool sd_save_presets(void)
+{
+#if defined(ESP32) || defined(PLATFORM_ESP32S3_TOUCH)
+  if (!SD.begin()) {
+    return false;
+  }
+  File file = SD.open("/ml_presets.txt", FILE_WRITE);
+  if (!file) {
+    return false;
+  }
+  file.println("# Magnetic Loop Controller Presets");
+  for (uint16_t i = 0; i < MAX_PRESETS; i++) {
+    if (preset[i].Frq > 0) {
+      file.print(i);
+      file.print(" ");
+      file.print(preset[i].Frq);
+      file.print(" ");
+      file.println(preset[i].Pos);
+    }
+  }
+  file.close();
+  return true;
+#else
+  return false;
+#endif
+}
+
+bool sd_load_presets(void)
+{
+#if defined(ESP32) || defined(PLATFORM_ESP32S3_TOUCH)
+  if (!SD.begin()) {
+    return false;
+  }
+  File file = SD.open("/ml_presets.txt", FILE_READ);
+  if (!file) {
+    return false;
+  }
+  init_Presets();
+  while (file.available()) {
+    String line = file.readStringUntil('\n');
+    line.trim();
+    if (line.length() == 0 || line.startsWith("#")) continue;
+    int idx = -1;
+    long frq = 0, pos = 0;
+    if (sscanf(line.c_str(), "%d %ld %ld", &idx, &frq, &pos) >= 3) {
+      if (idx >= 0 && idx < MAX_PRESETS) {
+        preset[idx].Frq = frq;
+        preset[idx].Pos = pos;
+      }
+    }
+  }
+  file.close();
+
+  preset_sort();
+  EEPROM_writeAnything(148, preset);
+#if defined(ESP32) || defined(PLATFORM_ESP32S3_TOUCH)
+  EEPROM.commit();
+#endif
+  determine_preset_bounds();
+  determine_active_range(running[ant].Frq);
+  return true;
+#else
+  return false;
+#endif
+}
+
 void setup()
 {
   uint8_t coldstart;
@@ -1142,6 +1211,7 @@ void setup()
   EEPROM.begin(512);
   Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN, 400000);
   gt911_init();
+  SD.begin();
 #endif
 
   #if RS485STEPPER

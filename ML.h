@@ -32,6 +32,11 @@
 
 #include <Arduino.h>
 
+#if defined(ESP32) || defined(PLATFORM_ESP32S3_TOUCH)
+#include <SPI.h>
+#include <SD.h>
+#endif
+
 #define  VERSION "5.00"
 #define  DATE    "2026-09-18"
 
@@ -807,3 +812,7 @@ typedef struct  {
 
 extern const uint16_t poll_rate[];
 extern const uint16_t default_plevel[];
+
+// SD Card Preset Backup & Restore functions
+bool sd_save_presets(void);
+bool sd_load_presets(void);

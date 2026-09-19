@@ -285,6 +285,10 @@ const char helpstring[] PROGMEM = {
             "$memoryclear       clear all frequency/position memories, same as Menu command (4).\r\n"
             "$memorywipe        full EEPROM wipe - clear all frq/pos memories and all settings to default.\r\n"
             "\r\n"
+            "SD Card Commands:\r\n"
+            "$sdsave / $sdbackup Save all preset memories to SD card (/ml_presets.txt).\r\n"
+            "$sdload / $sdrestore Restore preset memories from SD card (/ml_presets.txt).\r\n"
+            "\r\n"
             "$help              Display the above instructions.\r\n"
             "\r\n" };                   
 // Debug ################################################# 
@@ -841,6 +845,24 @@ void usb_parse_incoming(void)
     // Force a full EEPROM update upon reboot by storing 0xff in the first address
     EEPROM.write(0,0xff);
     SOFT_RESET();
+  }
+
+  else if (!strcasecmp("sdsave",incoming_command_string) || !strcasecmp("sdbackup",incoming_command_string))
+  {
+    if (sd_save_presets()) {
+      Serial.println(F("SD Save Presets Success"));
+    } else {
+      Serial.println(F("SD Save Presets Failed"));
+    }
+  }
+
+  else if (!strcasecmp("sdload",incoming_command_string) || !strcasecmp("sdrestore",incoming_command_string))
+  {
+    if (sd_load_presets()) {
+      Serial.println(F("SD Load Presets Success"));
+    } else {
+      Serial.println(F("SD Load Presets Failed"));
+    }
   }
 
   else if (!strcasecmp("softreset",incoming_command_string))     // Reset Microcontroller

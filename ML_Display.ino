@@ -201,38 +201,73 @@ void process_touch(void) {
       Enc.pos += 16;
     }
   }
-  // Row 2: Switches & Antenna Selection (Y: 350 - 460)
+  // Row 2: Switches & Antenna Selection & SD Card Actions (Y: 350 - 460)
   else if (y >= 350 && y <= 460) {
-    if (x >= 20 && x <= 140) {         // [ MENU / ENTER ]
+    if (x >= 20 && x <= 120) {         // [ MENU ]
       flag.short_push = true;
-    } else if (x >= 155 && x <= 250) { // [ UP ]
+    } else if (x >= 130 && x <= 210) { // [ UP ]
       up_toggle = true;
       up_button = true;
-    } else if (x >= 265 && x <= 360) { // [ DOWN ]
+    } else if (x >= 220 && x <= 300) { // [ DOWN ]
       dn_toggle = true;
       dn_button = true;
-    } else if (x >= 375 && x <= 490) { // [ SWR TUNE ]
+    } else if (x >= 310 && x <= 410) { // [ SWR TUNE ]
       #if PSWR_AUTOTUNE
       swr.tune_request = true;
       SWRtune_timer = SWRTUNE_TIMEOUT;
       #endif
-    } else if (x >= 505 && x <= 630) { // [ RECAL / PROF ]
+    } else if (x >= 420 && x <= 510) { // [ RECAL ]
       flag.stepper_recalibrate = true;
-    } else if (x >= 645 && x <= 780) { // [ ANT SELECT ]
+    } else if (x >= 520 && x <= 610) { // [ ANT SEL ]
       ant = (ant + 1) % 3;
       antenna_select(running[ant].Frq);
       #if RS485STEPPER
       rs485_SelectAntenna(ant);
       #endif
+    } else if (x >= 620 && x <= 695) { // [ SD SAVE ]
+      sd_save_presets();
+    } else if (x >= 705 && x <= 780) { // [ SD LOAD ]
+      sd_load_presets();
     }
   }
 }
 #endif
 
+void render_touch_lcd(void) {
+  static char prev_lcd[81];
+  static bool first_run = true;
+
+  if (first_run || memcmp(prev_lcd, virt_lcd, 80) != 0) {
+    memcpy(prev_lcd, virt_lcd, 80);
+    prev_lcd[80] = 0;
+    first_run = false;
+
+    // Render 20x4 LCD Crystal display on Serial / Touch Screen canvas
+    Serial.println(F("+--------------------+"));
+    for (uint8_t r = 0; r < 4; r++) {
+      Serial.print("|");
+      for (uint8_t c = 0; c < 20; c++) {
+        uint8_t ch = (uint8_t)virt_lcd[r * 20 + c];
+        if (ch == 0) Serial.print(" ");
+        else if (ch == 1) Serial.print("-");
+        else if (ch == 2) Serial.print("=");
+        else if (ch == 3) Serial.print("=");
+        else if (ch == 4) Serial.print("#");
+        else if (ch == 5) Serial.print("#");
+        else if (ch == 6) Serial.print("|");
+        else Serial.print((char)ch);
+      }
+      Serial.println("|");
+    }
+    Serial.println(F("+--------------------+"));
+  }
+}
+
 void virt_LCD_to_real_LCD(void)
 {
 #if defined(PLATFORM_ESP32S3_TOUCH) || defined(ESP32)
   process_touch();
+  render_touch_lcd();
 #else
   static char    real_lcd[81];                      // Character array representing what is visible on LCD
   static uint8_t character;                         // Character position on LCD, as 0 - 79
