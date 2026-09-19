@@ -35,6 +35,12 @@
 #if defined(ESP32) || defined(PLATFORM_ESP32S3_TOUCH)
 #include <SPI.h>
 #include <SD.h>
+#ifndef I2C_SDA_PIN
+#define I2C_SDA_PIN 8
+#endif
+#ifndef I2C_SCL_PIN
+#define I2C_SCL_PIN 9
+#endif
 #endif
 
 #define  VERSION "5.00"
@@ -391,33 +397,51 @@
 //
 // Valid Serial Port Parameters
 #define ICOM_CONFIG            SERIAL_8N1              // TTL Polarity
-#define ICOM_CONFIG_INV        SERIAL_8N1_RXINV_TXINV  // RS232 Polarity
 #define KENWOOD8N2_CONFIG      SERIAL_8N2              // If Kenwood rate is 4800 b/s or lower,
-#define KENWOOD8N2_CONFIG_INV  SERIAL_8N2_RXINV_TXINV  // then use 8N2
 #define KENWOOD_CONFIG         SERIAL_8N1
-#define KENWOOD_CONFIG_INV     SERIAL_8N1_RXINV_TXINV
 #define FT100_CONFIG           SERIAL_8N2
-#define FT100_CONFIG_INV       SERIAL_8N2_RXINV_TXINV
 #define FT7X7_CONFIG           SERIAL_8N2
-#define FT7X7_CONFIG_INV       SERIAL_8N2_RXINV_TXINV
 #define FT8X7_CONFIG           SERIAL_8N2
-#define FT8X7_CONFIG_INV       SERIAL_8N2_RXINV_TXINV
 #define FT920_CONFIG           SERIAL_8N2
-#define FT920_CONFIG_INV       SERIAL_8N2_RXINV_TXINV
 #define FT990_CONFIG           SERIAL_8N2
-#define FT990_CONFIG_INV       SERIAL_8N2_RXINV_TXINV
 #define FT1000MP_CONFIG        SERIAL_8N2
-#define FT1000MP_CONFIG_INV    SERIAL_8N2_RXINV_TXINV
 #define FT1000MPMKV_CONFIG     SERIAL_8N2
-#define FT1000MPMKV_CONFIG_INV SERIAL_8N2_RXINV_TXINV
 #define FT450_CONFIG           SERIAL_8N2
-#define FT450_CONFIG_INV       SERIAL_8N2_RXINV_TXINV
 #define ELECRAFT_CONFIG        SERIAL_8N1
-#define ELECRAFT_CONFIG_INV    SERIAL_8N1_RXINV_TXINV
 #define TENTEC_CONFIG          SERIAL_8N1
-#define TENTEC_CONFIG_INV      SERIAL_8N1_RXINV_TXINV
 #define PSEUDOVFO_CONFIG       SERIAL_8N1  // Not used, but need to have something here
+
+#if defined(ESP32) || defined(PLATFORM_ESP32S3_TOUCH)
+#define ICOM_CONFIG_INV        SERIAL_8N1
+#define KENWOOD8N2_CONFIG_INV  SERIAL_8N2
+#define KENWOOD_CONFIG_INV     SERIAL_8N1
+#define FT100_CONFIG_INV       SERIAL_8N2
+#define FT7X7_CONFIG_INV       SERIAL_8N2
+#define FT8X7_CONFIG_INV       SERIAL_8N2
+#define FT920_CONFIG_INV       SERIAL_8N2
+#define FT990_CONFIG_INV       SERIAL_8N2
+#define FT1000MP_CONFIG_INV    SERIAL_8N2
+#define FT1000MPMKV_CONFIG_INV SERIAL_8N2
+#define FT450_CONFIG_INV       SERIAL_8N2
+#define ELECRAFT_CONFIG_INV    SERIAL_8N1
+#define TENTEC_CONFIG_INV      SERIAL_8N1
+#define PSEUDOVFO_CONFIG_INV   SERIAL_8N1
+#else
+#define ICOM_CONFIG_INV        SERIAL_8N1_RXINV_TXINV  // RS232 Polarity
+#define KENWOOD8N2_CONFIG_INV  SERIAL_8N2_RXINV_TXINV  // then use 8N2
+#define KENWOOD_CONFIG_INV     SERIAL_8N1_RXINV_TXINV
+#define FT100_CONFIG_INV       SERIAL_8N2_RXINV_TXINV
+#define FT7X7_CONFIG_INV       SERIAL_8N2_RXINV_TXINV
+#define FT8X7_CONFIG_INV       SERIAL_8N2_RXINV_TXINV
+#define FT920_CONFIG_INV       SERIAL_8N2_RXINV_TXINV
+#define FT990_CONFIG_INV       SERIAL_8N2_RXINV_TXINV
+#define FT1000MP_CONFIG_INV    SERIAL_8N2_RXINV_TXINV
+#define FT1000MPMKV_CONFIG_INV SERIAL_8N2_RXINV_TXINV
+#define FT450_CONFIG_INV       SERIAL_8N2_RXINV_TXINV
+#define ELECRAFT_CONFIG_INV    SERIAL_8N1_RXINV_TXINV
+#define TENTEC_CONFIG_INV      SERIAL_8N1_RXINV_TXINV
 #define PSEUDOVFO_CONFIG_INV   SERIAL_8N1_RXINV_TXINV
+#endif
 //
 // Poll the radio for frequency information every XXX milliseconds
 // Set as 9999 for Manual Polling by pushing Enact Switch
@@ -812,6 +836,11 @@ typedef struct  {
 
 extern const uint16_t poll_rate[];
 extern const uint16_t default_plevel[];
+
+extern int8_t up_button;
+extern int8_t up_toggle;
+extern int8_t dn_button;
+extern int8_t dn_toggle;
 
 // SD Card Preset Backup & Restore functions
 bool sd_save_presets(void);

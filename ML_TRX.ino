@@ -127,45 +127,45 @@ uint16_t trx_mode=0;    // LSB, USB, CW, AM etc... AM while SWR tune
                            DEFAULT_TENTEC_MODE,
                            DEFAULT_PSEUDOVFO_MODE };
                            
- const uint16_t valid_uart_config[] =
-                        {  ICOM_CONFIG,
-                           ICOM_CONFIG,
-                           KENWOOD8N2_CONFIG,
-                           KENWOOD_CONFIG,
-                           KENWOOD_CONFIG,
-                           FT100_CONFIG,
-                           FT7X7_CONFIG,
-                           FT8X7_CONFIG,
-                           FT920_CONFIG,
-                           FT990_CONFIG,
-                           FT1000MP_CONFIG,
-                           FT1000MPMKV_CONFIG,
-                           FT450_CONFIG,
-                           ELECRAFT_CONFIG,
-                           ELECRAFT_CONFIG,
-                           TENTEC_CONFIG,
-                           TENTEC_CONFIG,
-                           PSEUDOVFO_CONFIG };
+ const uint32_t valid_uart_config[] =
+                        {  (uint32_t)ICOM_CONFIG,
+                           (uint32_t)ICOM_CONFIG,
+                           (uint32_t)KENWOOD8N2_CONFIG,
+                           (uint32_t)KENWOOD_CONFIG,
+                           (uint32_t)KENWOOD_CONFIG,
+                           (uint32_t)FT100_CONFIG,
+                           (uint32_t)FT7X7_CONFIG,
+                           (uint32_t)FT8X7_CONFIG,
+                           (uint32_t)FT920_CONFIG,
+                           (uint32_t)FT990_CONFIG,
+                           (uint32_t)FT1000MP_CONFIG,
+                           (uint32_t)FT1000MPMKV_CONFIG,
+                           (uint32_t)FT450_CONFIG,
+                           (uint32_t)ELECRAFT_CONFIG,
+                           (uint32_t)ELECRAFT_CONFIG,
+                           (uint32_t)TENTEC_CONFIG,
+                           (uint32_t)TENTEC_CONFIG,
+                           (uint32_t)PSEUDOVFO_CONFIG };
 
- const uint16_t valid_uart_config_inv[] =
-                        {  ICOM_CONFIG_INV,
-                           ICOM_CONFIG_INV,
-                           KENWOOD8N2_CONFIG_INV,
-                           KENWOOD_CONFIG_INV,
-                           KENWOOD_CONFIG_INV,
-                           FT100_CONFIG_INV,
-                           FT7X7_CONFIG_INV,
-                           FT8X7_CONFIG_INV,
-                           FT920_CONFIG_INV,
-                           FT990_CONFIG_INV,
-                           FT1000MP_CONFIG_INV,
-                           FT1000MPMKV_CONFIG_INV,
-                           FT450_CONFIG_INV,
-                           ELECRAFT_CONFIG_INV,
-                           ELECRAFT_CONFIG_INV,
-                           TENTEC_CONFIG_INV,
-                           TENTEC_CONFIG_INV,
-                           PSEUDOVFO_CONFIG_INV };
+ const uint32_t valid_uart_config_inv[] =
+                        {  (uint32_t)ICOM_CONFIG_INV,
+                           (uint32_t)ICOM_CONFIG_INV,
+                           (uint32_t)KENWOOD8N2_CONFIG_INV,
+                           (uint32_t)KENWOOD_CONFIG_INV,
+                           (uint32_t)KENWOOD_CONFIG_INV,
+                           (uint32_t)FT100_CONFIG_INV,
+                           (uint32_t)FT7X7_CONFIG_INV,
+                           (uint32_t)FT8X7_CONFIG_INV,
+                           (uint32_t)FT920_CONFIG_INV,
+                           (uint32_t)FT990_CONFIG_INV,
+                           (uint32_t)FT1000MP_CONFIG_INV,
+                           (uint32_t)FT1000MPMKV_CONFIG_INV,
+                           (uint32_t)FT450_CONFIG_INV,
+                           (uint32_t)ELECRAFT_CONFIG_INV,
+                           (uint32_t)ELECRAFT_CONFIG_INV,
+                           (uint32_t)TENTEC_CONFIG_INV,
+                           (uint32_t)TENTEC_CONFIG_INV,
+                           (uint32_t)PSEUDOVFO_CONFIG_INV };
                            
 // BOOL for TRX serial port - TRUE = Asynchronous serial read mode
 const int8_t async[] =
@@ -3327,12 +3327,10 @@ void trx_parameters_set(uint8_t which_trx)
   // (ICOM CI-V bus is a single-wire bi-directional bus requiring open-drain TX and pullup RX)
   if (controller_settings.trx[which_trx].radio < 2)
   {
-#if defined(ARDUINO_TEENSY40) || defined(ARDUINO_TEENSY41) || defined(__IMXRT1052__)
-    // Teensy 4.0/4.1 (ARM Cortex-M7 / i.MX RT1062) open drain and pullup configuration
-    pinMode(Uart_TXD, OUTPUT_OPENDRAIN);                               // Open Drain Enable on Teensy 4.x
-    pinMode(Uart_RXD, INPUT_PULLUP);                                  // Pullup Enable on Teensy 4.x
+#if defined(ESP32) || defined(PLATFORM_ESP32S3_TOUCH) || defined(ARDUINO_TEENSY40) || defined(ARDUINO_TEENSY41) || defined(__IMXRT1052__)
+    pinMode(Uart_TXD, OUTPUT_OPENDRAIN);
+    pinMode(Uart_RXD, INPUT_PULLUP);
 #else
-    // Teensy 3.1/3.2 (Kinetis ARM Cortex-M4) register-level PORT PCR configuration
     *portConfigRegister(Uart_TXD) |= PORT_PCR_ODE;                     // Open Drain Enable
     *portConfigRegister(Uart_RXD) |= (PORT_PCR_PE | PORT_PCR_PS);      // Pullup Enable
 #endif
@@ -3340,12 +3338,10 @@ void trx_parameters_set(uint8_t which_trx)
   // Set UART function normal for all other Radios - Needed if switching back from ICOM
   else
   {
-#if defined(ARDUINO_TEENSY40) || defined(ARDUINO_TEENSY41) || defined(__IMXRT1052__)
-    // Restore normal push-pull TX and standard input RX on Teensy 4.x
-    pinMode(Uart_TXD, OUTPUT);                                         // Push-Pull Output
-    pinMode(Uart_RXD, INPUT);                                          // Standard Input
+#if defined(ESP32) || defined(PLATFORM_ESP32S3_TOUCH) || defined(ARDUINO_TEENSY40) || defined(ARDUINO_TEENSY41) || defined(__IMXRT1052__)
+    pinMode(Uart_TXD, OUTPUT);
+    pinMode(Uart_RXD, INPUT);
 #else
-    // Restore normal TX/RX registers on Teensy 3.1/3.2
     *portConfigRegister(Uart_TXD) &= ~PORT_PCR_ODE;                   // Open Drain Disable
     *portConfigRegister(Uart_RXD) &= ~(PORT_PCR_PE | PORT_PCR_PS);    // Pullup Disable
 #endif

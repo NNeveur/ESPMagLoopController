@@ -1361,10 +1361,10 @@ void setup()
   #endif
   
   // Initialize an output pin to indicate which antenna is selected, if feature is in use.
-  #if ANALOGOUTPIN                               // Pin A14
+  #if ANALOGOUTPIN && !(defined(ESP32) || defined(PLATFORM_ESP32S3_TOUCH)) // Pin A14 on Teensy
   analogWriteResolution(8);
   analogWrite(ant1_select, (ant==1)?255:0);      // and set to selected antenna
-  #else                                          // Alternate, Pin 27 (defined in ML.h)
+  #else                                          // Alternate or ESP32 Digital output
   pinMode(ant1_select, OUTPUT);                  // Enable Antenna Select bit
   digitalWrite(ant1_select, (ant==1)?HIGH:LOW);  // and set to selected antenna
   #endif
