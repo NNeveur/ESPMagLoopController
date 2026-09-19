@@ -400,7 +400,7 @@ void antenna_select(int32_t frq)
   if (old_ant != ant)
   {
     #if RS485STEPPER
-    rs485_PwrOff();                                  // Cut motor current
+    rs485_PwrOff(ant);                                  // Cut motor current
     #endif    
     delayloop(50);                                   // Delay time for current decay
     #if ANALOGOUTPIN
@@ -1014,7 +1014,7 @@ void rotate_stepper_b(uint8_t microstep_rate, uint8_t backlash_comp)
   #endif
   {
     #if RS485STEPPER  // ML.h selection: A Pololu (TI) DRV8825 or (Allegro) A4988 Stepper motor controller carrier board
-    rs485_Incr(microstep_rate);
+    rs485_Incr(ant, microstep_rate);
     #endif
     stepper_track[ant] += step_size;      // Increase counter in accordance with step size
     flag.stepper_timer = true;            // Seed stepper active timer
@@ -1041,7 +1041,7 @@ void rotate_stepper_b(uint8_t microstep_rate, uint8_t backlash_comp)
     #endif
     {
       #if RS485STEPPER  // ML.h selection: A Pololu (TI) DRV8825 or (Allegro) A4988 Stepper motor controller carrier board
-      rs485_Decr(microstep_rate);
+      rs485_Decr(ant, microstep_rate);
       #endif
       stepper_track[ant] -= step_size;    // Decrease counter in accordance with step size--;
       flag.stepper_timer = true;          // Seed stepper active timer
@@ -1063,7 +1063,7 @@ void rotate_stepper_b(uint8_t microstep_rate, uint8_t backlash_comp)
     #endif
     {
       #if RS485STEPPER  // ML.h selection: A Pololu (TI) DRV8825 or (Allegro) A4988 Stepper motor controller carrier board
-      rs485_Decr(microstep_rate);
+      rs485_Decr(ant, microstep_rate);
       #endif
       stepper_track[ant] -= step_size;    // Decrease counter in accordance with step size
       flag.stepper_timer = true;          // Seed stepper active timer
